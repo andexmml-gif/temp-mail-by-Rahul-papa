@@ -29,7 +29,7 @@ CHANNELS = [
     }
 ]
 
-# Database Setup (With Auto-Migration)
+# Database Setup (Auto-Safe)
 conn = sqlite3.connect("bot_vault.db", check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute('''
@@ -57,22 +57,21 @@ user_sessions = {}
 active_watchers = {}
 waiting_for_custom_name = {}
 
-# Developer / Owner Card UI
-OWNER_INFO_BOX = (
-    "╭──────────────────────────────╮\n"
-    "│    👑 <b>BOT OWNER INFORMATION</b>    │\n"
-    "├──────────────────────────────┤\n"
-    "│ 👤 <b>Owner / Dev :</b> Rahul           │\n"
-    "│ ⚡ <b>Brand      :</b> Syntax Empire   │\n"
-    "│ 🚀 <b>Engine     :</b> High-Speed Core │\n"
-    "│ 💬 <b>Support    :</b> @syntaxkagc     │\n"
-    "╰──────────────────────────────╯"
+# Developer & Owner ASCII Badge Box
+OWNER_CARD = (
+    "╔════════════════════════╗\n"
+    "   👑 <b>BOT OWNER DETAILS</b> 👑\n"
+    "╠════════════════════════╣\n"
+    "  👤 <b>Developer :</b> Rahul\n"
+    "  ⚡ <b>Brand     :</b> Syntax Empire\n"
+    "  🚀 <b>Engine    :</b> Fast Asynchronous Core\n"
+    "  💬 <b>Support   :</b> @syntaxkagc\n"
+    "╚════════════════════════╝"
 )
 
 LANGUAGES = {
     "en": {
         "flag": "🇬🇧 English",
-        "welcome": f"{OWNER_INFO_BOX}\n\n⚡ <i>Ultra-Fast Disposable Temp-Mail Engine!</i>\n\nChoose an action below:",
         "gen_btn": "⚡ Instant Fresh Email",
         "custom_btn": "✏️ Custom Name Email",
         "domain_btn": "🌐 Custom Domain",
@@ -81,14 +80,13 @@ LANGUAGES = {
         "fake_btn": "🎭 Fake Profile Gen",
         "refresh_btn": "📬 Manual Refresh",
         "del_btn": "🗑 Delete Session",
-        "owner_btn": "👑 Owner Info",
+        "owner_btn": "👑 Bot Owner Info",
         "lang_btn": "🌐 Change Language",
-        "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nYou must join all our official channels to use this bot:",
+        "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nYou must join all official channels:",
         "verify_btn": "✅ Verify Membership"
     },
     "hi": {
         "flag": "🇮🇳 हिन्दी",
-        "welcome": f"{OWNER_INFO_BOX}\n\n⚡ <i>अल्ट्रा-फास्ट फ्री टेम्प-मेल इंजन!</i>\n\nनीचे दिए गए विकल्पों में से चुनें:",
         "gen_btn": "⚡ नया ईमेल बनाएं",
         "custom_btn": "✏️ मनपसंद नाम का ईमेल",
         "domain_btn": "🌐 डोमेन बदलें",
@@ -99,12 +97,11 @@ LANGUAGES = {
         "del_btn": "🗑 सेशन डिलीट करें",
         "owner_btn": "👑 ओनर की जानकारी",
         "lang_btn": "🌐 भाषा बदलें",
-        "lock": "⚠️ <b>पहुंच प्रतिबंधित है!</b>\nबॉट का उपयोग करने के लिए हमारे सभी आधिकारिक चैनलों से जुड़ें:",
-        "verify_btn": "✅ सदस्यता सत्यापित करें"
+        "lock": "⚠️ <b>पहुंच प्रतिबंधित है!</b>\nसभी चैनल्स से जुड़ें:",
+        "verify_btn": "✅ सत्यापित करें"
     },
     "hinglish": {
         "flag": "🇮🇳 Hinglish",
-        "welcome": f"{OWNER_INFO_BOX}\n\n⚡ <i>Next-Gen High-Speed Temp Mail Hub!</i>\n\nNeeche diye gaye buttons se operate karein:",
         "gen_btn": "⚡ Instant Fresh Email",
         "custom_btn": "✏️ Custom Name Email",
         "domain_btn": "🌐 Custom Domain",
@@ -115,7 +112,7 @@ LANGUAGES = {
         "del_btn": "🗑 Delete Session",
         "owner_btn": "👑 Bot Owner Info",
         "lang_btn": "🌐 Change Language",
-        "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nBot access karne ke liye official platforms join karna zaroori hai:",
+        "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nOfficial channels join karna zaroori hai:",
         "verify_btn": "✅ Verify / Unlock Bot"
     }
 }
@@ -172,6 +169,7 @@ def get_language_keyboard():
         keyboard.append(row)
     return InlineKeyboardMarkup(keyboard)
 
+# MAIN DASHBOARD KEYBOARD WITH PROMINENT OWNER BUTTON
 def get_main_keyboard(lang_code):
     l = LANGUAGES[lang_code]
     keyboard = [
@@ -192,10 +190,10 @@ def get_main_keyboard(lang_code):
             InlineKeyboardButton(l["del_btn"], callback_data="del_mail")
         ],
         [
-            InlineKeyboardButton(l["owner_btn"], callback_data="view_owner"),
-            InlineKeyboardButton(l["lang_btn"], callback_data="open_lang_menu")
+            InlineKeyboardButton(l["owner_btn"], callback_data="view_owner")
         ],
         [
+            InlineKeyboardButton(l["lang_btn"], callback_data="open_lang_menu"),
             InlineKeyboardButton("👑 Syntax Community", url="https://t.me/syntaxredirect")
         ]
     ]
@@ -279,7 +277,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.message.edit_text(lock_text, reply_markup=get_force_join_keyboard(lang_code), parse_mode="HTML")
         return
 
-    welcome_text = LANGUAGES[lang_code]['welcome']
+    welcome_text = (
+        f"{OWNER_CARD}\n\n"
+        "⚡ <b>Next-Gen High-Speed Disposable Temp-Mail Engine</b>\n\n"
+        "👇 <i>Neeche diye gaye buttons se operate karein:</i>"
+    )
     if update.message:
         await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
     elif update.callback_query:
@@ -342,14 +344,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return
 
+    # Direct Click on Owner Info Button
     if data == "view_owner":
-        owner_msg = (
-            f"{OWNER_INFO_BOX}\n\n"
-            "Official project powered by <b>Syntax Empire</b>.\n"
-            "Need help or feature requests? Contact our official channel below!"
+        owner_details_msg = (
+            f"{OWNER_CARD}\n\n"
+            "Official Telegram project engineered by <b>Syntax Empire</b>.\n"
+            "For inquiries, custom bot development, or promotions, reach out to our community!"
         )
-        back_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main")]])
-        await query.edit_message_text(owner_msg, reply_markup=back_kb, parse_mode="HTML")
+        back_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Dashboard", callback_data="back_main")]])
+        await query.edit_message_text(owner_details_msg, reply_markup=back_kb, parse_mode="HTML")
         return
 
     if data == "open_lang_menu":
