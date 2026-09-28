@@ -29,7 +29,7 @@ CHANNELS = [
     }
 ]
 
-# Database Setup
+# Database Setup (With Auto-Migration)
 conn = sqlite3.connect("bot_vault.db", check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute('''
@@ -47,17 +47,32 @@ cursor.execute('''
         lang TEXT DEFAULT 'hinglish'
     )
 ''')
+try:
+    cursor.execute("ALTER TABLE users ADD COLUMN lang TEXT DEFAULT 'hinglish'")
+except Exception:
+    pass
 conn.commit()
 
 user_sessions = {}
 active_watchers = {}
 waiting_for_custom_name = {}
 
-# Language Packs Dictionary
+# Developer / Owner Card UI
+OWNER_INFO_BOX = (
+    "╭──────────────────────────────╮\n"
+    "│    👑 <b>BOT OWNER INFORMATION</b>    │\n"
+    "├──────────────────────────────┤\n"
+    "│ 👤 <b>Owner / Dev :</b> Rahul           │\n"
+    "│ ⚡ <b>Brand      :</b> Syntax Empire   │\n"
+    "│ 🚀 <b>Engine     :</b> High-Speed Core │\n"
+    "│ 💬 <b>Support    :</b> @syntaxkagc     │\n"
+    "╰──────────────────────────────╯"
+)
+
 LANGUAGES = {
     "en": {
         "flag": "🇬🇧 English",
-        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>Ultra-Fast Disposable Temp-Mail Engine!</i>\n\nChoose an action below:",
+        "welcome": f"{OWNER_INFO_BOX}\n\n⚡ <i>Ultra-Fast Disposable Temp-Mail Engine!</i>\n\nChoose an action below:",
         "gen_btn": "⚡ Instant Fresh Email",
         "custom_btn": "✏️ Custom Name Email",
         "domain_btn": "🌐 Custom Domain",
@@ -66,13 +81,14 @@ LANGUAGES = {
         "fake_btn": "🎭 Fake Profile Gen",
         "refresh_btn": "📬 Manual Refresh",
         "del_btn": "🗑 Delete Session",
+        "owner_btn": "👑 Owner Info",
         "lang_btn": "🌐 Change Language",
         "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nYou must join all our official channels to use this bot:",
         "verify_btn": "✅ Verify Membership"
     },
     "hi": {
         "flag": "🇮🇳 हिन्दी",
-        "welcome": "👑 <b>सिंटैक्स एम्पायर बॉट</b>\n\n⚡ <i>अल्ट्रा-फास्ट फ्री टेम्प-मेल इंजन!</i>\n\nनीचे दिए गए विकल्पों में से चुनें:",
+        "welcome": f"{OWNER_INFO_BOX}\n\n⚡ <i>अल्ट्रा-फास्ट फ्री टेम्प-मेल इंजन!</i>\n\nनीचे दिए गए विकल्पों में से चुनें:",
         "gen_btn": "⚡ नया ईमेल बनाएं",
         "custom_btn": "✏️ मनपसंद नाम का ईमेल",
         "domain_btn": "🌐 डोमेन बदलें",
@@ -81,13 +97,14 @@ LANGUAGES = {
         "fake_btn": "🎭 फेक प्रोफ़ाइल बनाएं",
         "refresh_btn": "📬 इनबॉक्स चेक करें",
         "del_btn": "🗑 सेशन डिलीट करें",
+        "owner_btn": "👑 ओनर की जानकारी",
         "lang_btn": "🌐 भाषा बदलें",
         "lock": "⚠️ <b>पहुंच प्रतिबंधित है!</b>\nबॉट का उपयोग करने के लिए हमारे सभी आधिकारिक चैनलों से जुड़ें:",
         "verify_btn": "✅ सदस्यता सत्यापित करें"
     },
     "hinglish": {
         "flag": "🇮🇳 Hinglish",
-        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>Next-Gen High-Speed Temp Mail Hub!</i>\n\nNeeche diye gaye buttons se operate karein:",
+        "welcome": f"{OWNER_INFO_BOX}\n\n⚡ <i>Next-Gen High-Speed Temp Mail Hub!</i>\n\nNeeche diye gaye buttons se operate karein:",
         "gen_btn": "⚡ Instant Fresh Email",
         "custom_btn": "✏️ Custom Name Email",
         "domain_btn": "🌐 Custom Domain",
@@ -96,54 +113,10 @@ LANGUAGES = {
         "fake_btn": "🎭 Fake Profile Generator",
         "refresh_btn": "📬 Manual Refresh",
         "del_btn": "🗑 Delete Session",
+        "owner_btn": "👑 Bot Owner Info",
         "lang_btn": "🌐 Change Language",
         "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nBot access karne ke liye official platforms join karna zaroori hai:",
         "verify_btn": "✅ Verify / Unlock Bot"
-    },
-    "ar": {
-        "flag": "🇸🇦 العربية",
-        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>محرك بريد إلكتروني مؤقت فائق السرعة!</i>\n\nاختر خيارًا أدناه:",
-        "gen_btn": "⚡ إنشاء بريد فوري",
-        "custom_btn": "✏️ بريد باسم مخصص",
-        "domain_btn": "🌐 النطاقات المتاحة",
-        "save_btn": "💾 حفظ في الخزنة",
-        "vault_btn": "📁 رسائلي المحفوظة",
-        "fake_btn": "🎭 توليد بيانات وهمية",
-        "refresh_btn": "📬 تحديث البريد",
-        "del_btn": "🗑 مسح الجلسة",
-        "lang_btn": "🌐 تغيير اللغة",
-        "lock": "⚠️ <b>تم تقييد الوصول!</b>\nيجب عليك الانضمام إلى جميع القنوات للاستخدام:",
-        "verify_btn": "✅ تأكيد الانضمام"
-    },
-    "ru": {
-        "flag": "🇷🇺 Русский",
-        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>Быстрый сервис временной почты!</i>\n\nВыберите действие ниже:",
-        "gen_btn": "⚡ Создать почту",
-        "custom_btn": "✏️ Выбрать логин",
-        "domain_btn": "🌐 Выбрать домен",
-        "save_btn": "💾 Сохранить в сейф",
-        "vault_btn": "📁 Мой сейф",
-        "fake_btn": "🎭 Фейк профиль",
-        "refresh_btn": "📬 Проверить входящие",
-        "del_btn": "🗑 Удалить сессию",
-        "lang_btn": "🌐 Сменить язык",
-        "lock": "⚠️ <b>ДОСТУП ЗАБЛОКИРОВАН!</b>\nПодпишитесь на наши каналы для доступа к боту:",
-        "verify_btn": "✅ Проверить подписку"
-    },
-    "es": {
-        "flag": "🇪🇸 Español",
-        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>¡Motor de correo temporal ultrarrápido!</i>\n\nSeleccione una opción:",
-        "gen_btn": "⚡ Correo instantáneo",
-        "custom_btn": "✏️ Correo con nombre",
-        "domain_btn": "🌐 Cambiar dominio",
-        "save_btn": "💾 Guardar en baúl",
-        "vault_btn": "📁 Mi baúl",
-        "fake_btn": "🎭 Perfil falso",
-        "refresh_btn": "📬 Actualizar buzón",
-        "del_btn": "🗑 Eliminar sesión",
-        "lang_btn": "🌐 Cambiar idioma",
-        "lock": "⚠️ <b>¡ACCESO RESTRINGIDO!</b>\nÚnete a los canales oficiales para usar el bot:",
-        "verify_btn": "✅ Verificar membresía"
     }
 }
 
@@ -219,7 +192,10 @@ def get_main_keyboard(lang_code):
             InlineKeyboardButton(l["del_btn"], callback_data="del_mail")
         ],
         [
-            InlineKeyboardButton(l["lang_btn"], callback_data="open_lang_menu"),
+            InlineKeyboardButton(l["owner_btn"], callback_data="view_owner"),
+            InlineKeyboardButton(l["lang_btn"], callback_data="open_lang_menu")
+        ],
+        [
             InlineKeyboardButton("👑 Syntax Community", url="https://t.me/syntaxredirect")
         ]
     ]
@@ -303,12 +279,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.message.edit_text(lock_text, reply_markup=get_force_join_keyboard(lang_code), parse_mode="HTML")
         return
 
-    welcome_text = (
-        "╔════════════════════════╗\n"
-        "   👑  <b>SYNTAX EMPIRE BOT</b>  👑\n"
-        "╚════════════════════════╝\n\n"
-        f"{LANGUAGES[lang_code]['welcome']}"
-    )
+    welcome_text = LANGUAGES[lang_code]['welcome']
     if update.message:
         await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
     elif update.callback_query:
@@ -371,7 +342,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return
 
-    # Language Switcher
+    if data == "view_owner":
+        owner_msg = (
+            f"{OWNER_INFO_BOX}\n\n"
+            "Official project powered by <b>Syntax Empire</b>.\n"
+            "Need help or feature requests? Contact our official channel below!"
+        )
+        back_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main")]])
+        await query.edit_message_text(owner_msg, reply_markup=back_kb, parse_mode="HTML")
+        return
+
     if data == "open_lang_menu":
         await query.edit_message_text(
             "🌐 <b>SELECT YOUR LANGUAGE / अपनी भाषा चुनें:</b>",
@@ -524,7 +504,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await start(update, context)
 
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .read_timeout(30)
+        .write_timeout(30)
+        .connect_timeout(30)
+        .pool_timeout(30)
+        .build()
+    )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
