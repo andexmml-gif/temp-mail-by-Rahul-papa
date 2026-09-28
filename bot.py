@@ -6,7 +6,7 @@ import re
 import asyncio
 import sqlite3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 BOT_TOKEN = "8604538821:AAEXkRMTPA5jnuyI0YzNaiyeCelBuWhWJe4"
 ADMIN_ID = 8604538821
@@ -29,7 +29,7 @@ CHANNELS = [
     }
 ]
 
-# Database
+# Database Setup
 conn = sqlite3.connect("bot_vault.db", check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute('''
@@ -43,22 +43,129 @@ cursor.execute('''
 ''')
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY
+        user_id INTEGER PRIMARY KEY,
+        lang TEXT DEFAULT 'hinglish'
     )
 ''')
 conn.commit()
 
 user_sessions = {}
 active_watchers = {}
+waiting_for_custom_name = {}
+
+# Language Packs Dictionary
+LANGUAGES = {
+    "en": {
+        "flag": "🇬🇧 English",
+        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>Ultra-Fast Disposable Temp-Mail Engine!</i>\n\nChoose an action below:",
+        "gen_btn": "⚡ Instant Fresh Email",
+        "custom_btn": "✏️ Custom Name Email",
+        "domain_btn": "🌐 Custom Domain",
+        "save_btn": "💾 Save to Vault",
+        "vault_btn": "📁 My Vault (Saved)",
+        "fake_btn": "🎭 Fake Profile Gen",
+        "refresh_btn": "📬 Manual Refresh",
+        "del_btn": "🗑 Delete Session",
+        "lang_btn": "🌐 Change Language",
+        "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nYou must join all our official channels to use this bot:",
+        "verify_btn": "✅ Verify Membership"
+    },
+    "hi": {
+        "flag": "🇮🇳 हिन्दी",
+        "welcome": "👑 <b>सिंटैक्स एम्पायर बॉट</b>\n\n⚡ <i>अल्ट्रा-फास्ट फ्री टेम्प-मेल इंजन!</i>\n\nनीचे दिए गए विकल्पों में से चुनें:",
+        "gen_btn": "⚡ नया ईमेल बनाएं",
+        "custom_btn": "✏️ मनपसंद नाम का ईमेल",
+        "domain_btn": "🌐 डोमेन बदलें",
+        "save_btn": "💾 ईमेल वॉल्ट में सेव करें",
+        "vault_btn": "📁 सेव किए गए ईमेल",
+        "fake_btn": "🎭 फेक प्रोफ़ाइल बनाएं",
+        "refresh_btn": "📬 इनबॉक्स चेक करें",
+        "del_btn": "🗑 सेशन डिलीट करें",
+        "lang_btn": "🌐 भाषा बदलें",
+        "lock": "⚠️ <b>पहुंच प्रतिबंधित है!</b>\nबॉट का उपयोग करने के लिए हमारे सभी आधिकारिक चैनलों से जुड़ें:",
+        "verify_btn": "✅ सदस्यता सत्यापित करें"
+    },
+    "hinglish": {
+        "flag": "🇮🇳 Hinglish",
+        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>Next-Gen High-Speed Temp Mail Hub!</i>\n\nNeeche diye gaye buttons se operate karein:",
+        "gen_btn": "⚡ Instant Fresh Email",
+        "custom_btn": "✏️ Custom Name Email",
+        "domain_btn": "🌐 Custom Domain",
+        "save_btn": "💾 Save to Vault",
+        "vault_btn": "📁 My Vault (Saved)",
+        "fake_btn": "🎭 Fake Profile Generator",
+        "refresh_btn": "📬 Manual Refresh",
+        "del_btn": "🗑 Delete Session",
+        "lang_btn": "🌐 Change Language",
+        "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nBot access karne ke liye official platforms join karna zaroori hai:",
+        "verify_btn": "✅ Verify / Unlock Bot"
+    },
+    "ar": {
+        "flag": "🇸🇦 العربية",
+        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>محرك بريد إلكتروني مؤقت فائق السرعة!</i>\n\nاختر خيارًا أدناه:",
+        "gen_btn": "⚡ إنشاء بريد فوري",
+        "custom_btn": "✏️ بريد باسم مخصص",
+        "domain_btn": "🌐 النطاقات المتاحة",
+        "save_btn": "💾 حفظ في الخزنة",
+        "vault_btn": "📁 رسائلي المحفوظة",
+        "fake_btn": "🎭 توليد بيانات وهمية",
+        "refresh_btn": "📬 تحديث البريد",
+        "del_btn": "🗑 مسح الجلسة",
+        "lang_btn": "🌐 تغيير اللغة",
+        "lock": "⚠️ <b>تم تقييد الوصول!</b>\nيجب عليك الانضمام إلى جميع القنوات للاستخدام:",
+        "verify_btn": "✅ تأكيد الانضمام"
+    },
+    "ru": {
+        "flag": "🇷🇺 Русский",
+        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>Быстрый сервис временной почты!</i>\n\nВыберите действие ниже:",
+        "gen_btn": "⚡ Создать почту",
+        "custom_btn": "✏️ Выбрать логин",
+        "domain_btn": "🌐 Выбрать домен",
+        "save_btn": "💾 Сохранить в сейф",
+        "vault_btn": "📁 Мой сейф",
+        "fake_btn": "🎭 Фейк профиль",
+        "refresh_btn": "📬 Проверить входящие",
+        "del_btn": "🗑 Удалить сессию",
+        "lang_btn": "🌐 Сменить язык",
+        "lock": "⚠️ <b>ДОСТУП ЗАБЛОКИРОВАН!</b>\nПодпишитесь на наши каналы для доступа к боту:",
+        "verify_btn": "✅ Проверить подписку"
+    },
+    "es": {
+        "flag": "🇪🇸 Español",
+        "welcome": "👑 <b>SYNTAX EMPIRE BOT</b>\n\n⚡ <i>¡Motor de correo temporal ultrarrápido!</i>\n\nSeleccione una opción:",
+        "gen_btn": "⚡ Correo instantáneo",
+        "custom_btn": "✏️ Correo con nombre",
+        "domain_btn": "🌐 Cambiar dominio",
+        "save_btn": "💾 Guardar en baúl",
+        "vault_btn": "📁 Mi baúl",
+        "fake_btn": "🎭 Perfil falso",
+        "refresh_btn": "📬 Actualizar buzón",
+        "del_btn": "🗑 Eliminar sesión",
+        "lang_btn": "🌐 Cambiar idioma",
+        "lock": "⚠️ <b>¡ACCESO RESTRINGIDO!</b>\nÚnete a los canales oficiales para usar el bot:",
+        "verify_btn": "✅ Verificar membresía"
+    }
+}
+
+def get_user_lang(user_id):
+    cursor.execute("SELECT lang FROM users WHERE user_id = ?", (user_id,))
+    res = cursor.fetchone()
+    if res and res[0] in LANGUAGES:
+        return res[0]
+    return "hinglish"
+
+def set_user_lang(user_id, lang_code):
+    cursor.execute("INSERT INTO users (user_id, lang) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET lang = ?", (user_id, lang_code, lang_code))
+    conn.commit()
 
 def random_string(length=8):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 def generate_fake_profile():
-    first_names = ["Alex", "Jordan", "Taylor", "Morgan", "Sam", "Chris", "Ryan", "David", "Ethan", "Lucas"]
-    last_names = ["Vance", "Mercer", "Blackwood", "Sterling", "Kowalski", "Stone", "Hayes", "Drake", "Sinclair"]
-    streets = ["Sunset Blvd", "Broadway Ave", "Maple Street", "Silicon Park", "Kings Road", "Wall Street"]
-    cities = [("New York", "NY", "10001"), ("Los Angeles", "CA", "90001"), ("Austin", "TX", "73301"), ("Miami", "FL", "33101")]
+    first_names = ["Alex", "Jordan", "Taylor", "Morgan", "Sam", "Chris", "Ryan", "David", "Lucas"]
+    last_names = ["Vance", "Mercer", "Blackwood", "Sterling", "Kowalski", "Stone", "Sinclair"]
+    streets = ["Sunset Blvd", "Broadway Ave", "Kings Road", "Wall Street", "Silicon Ave"]
+    cities = [("New York", "NY", "10001"), ("Los Angeles", "CA", "90001"), ("Austin", "TX", "73301")]
     city, state, zip_code = random.choice(cities)
     full_name = f"{random.choice(first_names)} {random.choice(last_names)}"
     address = f"{random.randint(100, 9999)} {random.choice(streets)}, {city}, {state} {zip_code}"
@@ -75,29 +182,44 @@ async def check_user_membership(bot, user_id):
             pass
     return True
 
-def get_force_join_keyboard():
+def get_force_join_keyboard(lang_code):
     keyboard = []
     for ch in CHANNELS:
         keyboard.append([InlineKeyboardButton(f"👉 Join {ch['name']}", url=ch["link"])])
-    keyboard.append([InlineKeyboardButton("✅ Verify / Unlock Bot", callback_data="verify_join")])
+    keyboard.append([InlineKeyboardButton(LANGUAGES[lang_code]["verify_btn"], callback_data="verify_join")])
     return InlineKeyboardMarkup(keyboard)
 
-def get_main_keyboard():
+def get_language_keyboard():
+    keyboard = []
+    keys = list(LANGUAGES.keys())
+    for i in range(0, len(keys), 2):
+        row = [InlineKeyboardButton(LANGUAGES[keys[i]]["flag"], callback_data=f"setlang_{keys[i]}")]
+        if i + 1 < len(keys):
+            row.append(InlineKeyboardButton(LANGUAGES[keys[i+1]]["flag"], callback_data=f"setlang_{keys[i+1]}"))
+        keyboard.append(row)
+    return InlineKeyboardMarkup(keyboard)
+
+def get_main_keyboard(lang_code):
+    l = LANGUAGES[lang_code]
     keyboard = [
         [
-            InlineKeyboardButton("⚡ Instant Fresh Email", callback_data="gen_mail"),
-            InlineKeyboardButton("🌐 Custom Domain", callback_data="list_domains")
+            InlineKeyboardButton(l["gen_btn"], callback_data="gen_mail"),
+            InlineKeyboardButton(l["custom_btn"], callback_data="btn_custom_name")
         ],
         [
-            InlineKeyboardButton("💾 Save to Vault", callback_data="save_vault"),
-            InlineKeyboardButton("📁 My Vault (Saved)", callback_data="view_vault")
+            InlineKeyboardButton(l["domain_btn"], callback_data="list_domains"),
+            InlineKeyboardButton(l["save_btn"], callback_data="save_vault")
         ],
         [
-            InlineKeyboardButton("🎭 Fake Profile Generator", callback_data="fake_id"),
-            InlineKeyboardButton("📬 Manual Refresh", callback_data="check_mail")
+            InlineKeyboardButton(l["vault_btn"], callback_data="view_vault"),
+            InlineKeyboardButton(l["fake_btn"], callback_data="fake_id")
         ],
         [
-            InlineKeyboardButton("🗑 Delete Session", callback_data="del_mail"),
+            InlineKeyboardButton(l["refresh_btn"], callback_data="check_mail"),
+            InlineKeyboardButton(l["del_btn"], callback_data="del_mail")
+        ],
+        [
+            InlineKeyboardButton(l["lang_btn"], callback_data="open_lang_menu"),
             InlineKeyboardButton("👑 Syntax Community", url="https://t.me/syntaxredirect")
         ]
     ]
@@ -144,7 +266,8 @@ async def watch_inbox(bot, user_id, token, address):
                             f"<blockquote>{html.escape(body[:1200])}</blockquote>\n\n"
                             "⚡ <i>Auto-intercepted by Syntax Empire Core</i>"
                         )
-                        await bot.send_message(chat_id=user_id, text=alert_card, parse_mode="HTML", reply_markup=get_main_keyboard())
+                        lang_code = get_user_lang(user_id)
+                        await bot.send_message(chat_id=user_id, text=alert_card, parse_mode="HTML", reply_markup=get_main_keyboard(lang_code))
         except Exception:
             pass
         await asyncio.sleep(4)
@@ -155,19 +278,16 @@ async def create_email_account(domain, prefix=None):
             prefix = f"{random_string()}{random.randint(100,999)}"
         email_address = f"{prefix}@{domain}"
         password = random_string(12)
-        
         reg_resp = await client.post("https://api.mail.tm/accounts", json={"address": email_address, "password": password})
         if reg_resp.status_code != 201:
             return None, None, None
-            
         tok_resp = await client.post("https://api.mail.tm/token", json={"address": email_address, "password": password})
         token = tok_resp.json().get("token")
         return email_address, password, token
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-    conn.commit()
+    lang_code = get_user_lang(user_id)
 
     joined = await check_user_membership(context.bot, user_id)
     if not joined:
@@ -175,83 +295,74 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "╔════════════════════════╗\n"
             "   🔒 <b>ACCESS RESTRICTED!</b> 🔒\n"
             "╚════════════════════════╝\n\n"
-            "⚠️ <b>Syntax Empire Temp-Mail Bot</b> ko access karne ke liye official platforms join karna zaroori hai.\n\n"
-            "👇 <i>Neeche diye gaye sabhi links join karein, fir 'Verify' par tap karein:</i>"
+            f"{LANGUAGES[lang_code]['lock']}"
         )
         if update.message:
-            await update.message.reply_text(lock_text, reply_markup=get_force_join_keyboard(), parse_mode="HTML")
+            await update.message.reply_text(lock_text, reply_markup=get_force_join_keyboard(lang_code), parse_mode="HTML")
         elif update.callback_query:
-            await update.callback_query.message.edit_text(lock_text, reply_markup=get_force_join_keyboard(), parse_mode="HTML")
+            await update.callback_query.message.edit_text(lock_text, reply_markup=get_force_join_keyboard(lang_code), parse_mode="HTML")
         return
 
     welcome_text = (
         "╔════════════════════════╗\n"
         "   👑  <b>SYNTAX EMPIRE BOT</b>  👑\n"
         "╚════════════════════════╝\n\n"
-        "⚡ <b>Next-Gen High-Speed Temp Mail Hub!</b>\n\n"
-        "✨ <b>Pro Features:</b>\n"
-        "├ 🌐 <b>Custom Domain Picker:</b> Apni marzi ka domain chuno\n"
-        "├ 🔔 <b>Auto Live OTP Alerts:</b> Direct notification aayega\n"
-        "├ 💾 <b>Email Vault:</b> Reserve your favorite emails\n"
-        "└ 🎭 <b>Fake Profiles:</b> US IDs for signups\n\n"
-        "💡 <i>Tip: Apna custom naam rakhne ke liye type karein:</i> <code>/custom apnanaam</code>\n\n"
-        "👇 <i>Neeche diye gaye buttons se operate karein:</i>"
+        f"{LANGUAGES[lang_code]['welcome']}"
     )
     if update.message:
-        await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(), parse_mode="HTML")
+        await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
     elif update.callback_query:
-        await update.callback_query.message.edit_text(welcome_text, reply_markup=get_main_keyboard(), parse_mode="HTML")
+        await update.callback_query.message.edit_text(welcome_text, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
 
-async def custom_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    joined = await check_user_membership(context.bot, user_id)
-    if not joined:
-        await update.message.reply_text("❌ Pehle mandatory channels join karein!", reply_markup=get_force_join_keyboard())
-        return
+    lang_code = get_user_lang(user_id)
+    text = update.message.text.strip().lower()
 
-    text = update.message.text.replace("/custom", "").strip().lower()
-    clean_prefix = re.sub(r'[^a-z0-9]', '', text)
-    
-    if not clean_prefix or len(clean_prefix) < 3:
-        await update.message.reply_text("⚠️ <b>Sahi format:</b> <code>/custom rahulbhai</code>\n(Kam se kam 3 characters hone chahiye)", parse_mode="HTML")
-        return
+    if user_id in waiting_for_custom_name and waiting_for_custom_name[user_id]:
+        waiting_for_custom_name[user_id] = False
+        clean_prefix = re.sub(r'[^a-z0-9]', '', text)
 
-    await update.message.reply_text("⏳ <i>Custom name ke sath email register ho raha hai...</i>", parse_mode="HTML")
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        dom_resp = await client.get("https://api.mail.tm/domains")
-        domains = dom_resp.json().get("hydra:member", [])
-        if not domains:
-            await update.message.reply_text("❌ Domain server unavailable", reply_markup=get_main_keyboard())
-            return
-        
-        domain = domains[0]["domain"]
-        email_addr, pwd, tok = await create_email_account(domain, prefix=clean_prefix)
-        if not email_addr:
-            await update.message.reply_text("⚠️ Yeh custom username already taken hai! Dusra naam try karein.", reply_markup=get_main_keyboard())
+        if len(clean_prefix) < 3:
+            await update.message.reply_text("⚠️ Minimum 3 characters required!", reply_markup=get_main_keyboard(lang_code))
             return
 
-        user_sessions[user_id] = {"address": email_addr, "password": pwd, "token": tok}
-        if user_id in active_watchers:
-            active_watchers[user_id].cancel()
-        active_watchers[user_id] = asyncio.create_task(watch_inbox(context.bot, user_id, tok, email_addr))
+        await update.message.reply_text(f"⏳ <i>Allocating `{clean_prefix}` email...</i>", parse_mode="HTML")
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                dom_resp = await client.get("https://api.mail.tm/domains")
+                domains = dom_resp.json().get("hydra:member", [])
+                domain = domains[0]["domain"]
+                email_addr, pwd, tok = await create_email_account(domain, prefix=clean_prefix)
+                if not email_addr:
+                    await update.message.reply_text("⚠️ Name already taken! Try another.", reply_markup=get_main_keyboard(lang_code))
+                    return
 
-        mail_card = (
-            "╔════════════════════════╗\n"
-            "   👑 <b>CUSTOM EMAIL READY!</b>\n"
-            "╚════════════════════════╝\n\n"
-            f"📧 <b>Your Custom Email:</b>\n<code>{email_addr}</code>\n\n"
-            "🎯 <b>Status:</b> 🟢 <b>Auto-Listening Active!</b>"
-        )
-        await update.message.reply_text(mail_card, reply_markup=get_main_keyboard(), parse_mode="HTML")
+                user_sessions[user_id] = {"address": email_addr, "password": pwd, "token": tok}
+                if user_id in active_watchers:
+                    active_watchers[user_id].cancel()
+                active_watchers[user_id] = asyncio.create_task(watch_inbox(context.bot, user_id, tok, email_addr))
+
+                mail_card = (
+                    "╔════════════════════════╗\n"
+                    "   👑 <b>CUSTOM EMAIL READY!</b>\n"
+                    "╚════════════════════════╝\n\n"
+                    f"📧 <b>Your Custom Email:</b>\n<code>{email_addr}</code>\n\n"
+                    "🎯 <b>Status:</b> 🟢 <b>Auto-Listening Active!</b>"
+                )
+                await update.message.reply_text(mail_card, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+            except Exception:
+                await update.message.reply_text("❌ Network timeout!", reply_markup=get_main_keyboard(lang_code))
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
+    lang_code = get_user_lang(user_id)
 
     joined = await check_user_membership(context.bot, user_id)
-    if not joined:
-        await query.answer("❌ Pehle sabhi channels join karein!", show_alert=True)
+    if not joined and data != "verify_join":
+        await query.answer("❌ Please join required channels!", show_alert=True)
         return
 
     await query.answer()
@@ -260,39 +371,51 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return
 
+    # Language Switcher
+    if data == "open_lang_menu":
+        await query.edit_message_text(
+            "🌐 <b>SELECT YOUR LANGUAGE / अपनी भाषा चुनें:</b>",
+            reply_markup=get_language_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+
+    elif data.startswith("setlang_"):
+        chosen_lang = data.replace("setlang_", "")
+        set_user_lang(user_id, chosen_lang)
+        await query.answer(f"Language set to {LANGUAGES[chosen_lang]['flag']}!")
+        await start(update, context)
+        return
+
+    elif data == "btn_custom_name":
+        waiting_for_custom_name[user_id] = True
+        cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="back_main")]])
+        await query.edit_message_text(
+            "✏️ <b>CUSTOM NAME:</b>\n\nSend your desired name in chat (e.g. <code>syntaxvip99</code>):",
+            reply_markup=cancel_kb,
+            parse_mode="HTML"
+        )
+        return
+
     async with httpx.AsyncClient(timeout=10.0) as client:
-        # LIST DOMAINS FOR SELECTION
         if data == "list_domains":
             try:
                 dom_resp = await client.get("https://api.mail.tm/domains")
                 domains = dom_resp.json().get("hydra:member", [])
-                if not domains:
-                    await query.edit_message_text("❌ Abhi domains load nahi hue. Dobara try karein.", reply_markup=get_main_keyboard())
-                    return
-
                 buttons = []
                 for d in domains[:6]:
                     dom_name = d["domain"]
                     buttons.append([InlineKeyboardButton(f"🌐 @{dom_name}", callback_data=f"seldom_{dom_name}")])
                 buttons.append([InlineKeyboardButton("🔙 Back", callback_data="back_main")])
-
-                domain_text = (
-                    "╔════════════════════════╗\n"
-                    "   🌐 <b>CHOOSE DOMAIN</b>\n"
-                    "╚════════════════════════╝\n\n"
-                    "Neeche diye gaye available domains me se apna pasandeeda domain select karein:"
-                )
-                await query.edit_message_text(domain_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+                await query.edit_message_text("🌐 <b>AVAILABLE DOMAINS:</b>", reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
             except Exception:
-                await query.edit_message_text("❌ Domain list fetch error", reply_markup=get_main_keyboard())
+                await query.edit_message_text("❌ Domain fetch error", reply_markup=get_main_keyboard(lang_code))
 
-        # GENERATE EMAIL WITH SELECTED DOMAIN
         elif data.startswith("seldom_"):
             chosen_domain = data.replace("seldom_", "")
-            await query.edit_message_text(f"⏳ <i>@{chosen_domain} par email allocate ho raha hai...</i>", parse_mode="HTML")
             email_addr, pwd, tok = await create_email_account(chosen_domain)
             if not email_addr:
-                await query.edit_message_text("⚠️ Domain rate limit, dusra domain chuno!", reply_markup=get_main_keyboard())
+                await query.edit_message_text("⚠️ Rate limit, try another domain!", reply_markup=get_main_keyboard(lang_code))
                 return
 
             user_sessions[user_id] = {"address": email_addr, "password": pwd, "token": tok}
@@ -300,18 +423,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 active_watchers[user_id].cancel()
             active_watchers[user_id] = asyncio.create_task(watch_inbox(context.bot, user_id, tok, email_addr))
 
-            mail_card = (
-                "╔════════════════════════╗\n"
-                "    📧  <b>FRESH EMAIL READY</b>\n"
-                "╚════════════════════════╝\n\n"
-                f"⚡ <b>Domain:</b> <code>@{chosen_domain}</code>\n"
-                f"📫 <b>Email:</b> <code>{email_addr}</code>\n\n"
-                "🎯 <b>Status:</b> 🟢 <b>Auto-Listening Active!</b>"
-            )
-            await query.edit_message_text(mail_card, reply_markup=get_main_keyboard(), parse_mode="HTML")
+            await query.edit_message_text(f"📧 <b>Email:</b> <code>{email_addr}</code>\n🟢 <b>Auto-Listening Active!</b>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
 
         elif data == "gen_mail":
-            await query.edit_message_text("⚡ <i>Allocating fresh random email...</i>", parse_mode="HTML")
             try:
                 dom_resp = await client.get("https://api.mail.tm/domains")
                 domains = dom_resp.json().get("hydra:member", [])
@@ -323,20 +437,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     active_watchers[user_id].cancel()
                 active_watchers[user_id] = asyncio.create_task(watch_inbox(context.bot, user_id, tok, email_addr))
 
-                mail_card = (
-                    "╔════════════════════════╗\n"
-                    "    📧  <b>FRESH EMAIL READY</b>\n"
-                    "╚════════════════════════╝\n\n"
-                    f"⚡ <b>Email:</b> <code>{email_addr}</code>\n\n"
-                    "🎯 <b>Status:</b> 🟢 <b>Auto-Listening Active!</b>"
-                )
-                await query.edit_message_text(mail_card, reply_markup=get_main_keyboard(), parse_mode="HTML")
+                await query.edit_message_text(f"⚡ <b>Fresh Email:</b>\n<code>{email_addr}</code>\n\n🟢 <b>Listening for OTPs...</b>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
             except Exception:
-                await query.edit_message_text("❌ Connection timeout", reply_markup=get_main_keyboard())
+                await query.edit_message_text("❌ Timeout!", reply_markup=get_main_keyboard(lang_code))
 
         elif data == "save_vault":
             if user_id not in user_sessions:
-                await query.answer("⚠️ Pehle email banayein!", show_alert=True)
+                await query.answer("⚠️ Generate an email first!", show_alert=True)
                 return
             sess = user_sessions[user_id]
             cursor.execute("INSERT OR REPLACE INTO vault (user_id, email, password, token) VALUES (?, ?, ?, ?)",
@@ -345,17 +452,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("💾 Email Saved into Vault!", show_alert=True)
 
         elif data == "view_vault":
-            cursor.execute("SELECT email, password FROM vault WHERE user_id = ?", (user_id,))
+            cursor.execute("SELECT email FROM vault WHERE user_id = ?", (user_id,))
             saved = cursor.fetchall()
             if not saved:
-                await query.answer("📁 Vault khali hai!", show_alert=True)
+                await query.answer("📁 Vault is empty!", show_alert=True)
                 return
             buttons = []
             for item in saved[:5]:
-                mail_btn_text = item[0][:20] + "..." if len(item[0]) > 20 else item[0]
-                buttons.append([InlineKeyboardButton(f"📬 {mail_btn_text}", callback_data=f"restore_{item[0]}")])
-            buttons.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_main")])
-            await query.edit_message_text("📁 <b>MY SAVED VAULT:</b>\n\nRestore karne ke liye tap karein:", reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+                buttons.append([InlineKeyboardButton(f"📬 {item[0][:22]}", callback_data=f"restore_{item[0]}")])
+            buttons.append([InlineKeyboardButton("🔙 Back", callback_data="back_main")])
+            await query.edit_message_text("📁 <b>SAVED VAULT:</b>\nTap to restore:", reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
         elif data.startswith("restore_"):
             target_email = data.replace("restore_", "")
@@ -367,23 +473,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if user_id in active_watchers:
                     active_watchers[user_id].cancel()
                 active_watchers[user_id] = asyncio.create_task(watch_inbox(context.bot, user_id, tok, email_addr))
-                await query.edit_message_text(f"🔄 <b>RESTORED:</b> <code>{email_addr}</code>\n\n🟢 <b>Listening for OTPs...</b>", reply_markup=get_main_keyboard(), parse_mode="HTML")
+                await query.edit_message_text(f"🔄 <b>RESTORED:</b> <code>{email_addr}</code>\n🟢 <b>Listening for OTPs...</b>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
 
         elif data == "fake_id":
             name, address, dob = generate_fake_profile()
             profile_card = (
                 "╔════════════════════════╗\n"
-                "    🎭  <b>FAKE PROFILE GENERATED</b>\n"
+                "    🎭  <b>FAKE PROFILE DATA</b>\n"
                 "╚════════════════════════╝\n\n"
                 f"👤 <b>Full Name:</b> <code>{name}</code>\n"
                 f"🎂 <b>Date of Birth:</b> <code>{dob}</code>\n"
                 f"🏠 <b>US Address:</b> <code>{address}</code>\n"
             )
-            await query.message.reply_text(profile_card, reply_markup=get_main_keyboard(), parse_mode="HTML")
+            await query.message.reply_text(profile_card, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
 
         elif data == "check_mail":
             if user_id not in user_sessions:
-                await query.answer("⚠️ Pehle email banayein!", show_alert=True)
+                await query.answer("⚠️ Generate an email first!", show_alert=True)
                 return
             token = user_sessions[user_id]["token"]
             headers = {"Authorization": f"Bearer {token}"}
@@ -391,7 +497,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg_resp = await client.get("https://api.mail.tm/messages", headers=headers)
                 messages = msg_resp.json().get("hydra:member", [])
                 if not messages:
-                    await query.answer("📭 Abhi koi email nahi aaya!", show_alert=True)
+                    await query.answer("📭 Inbox empty!", show_alert=True)
                     return
                 latest_id = messages[0]["id"]
                 detail_resp = await client.get(f"https://api.mail.tm/messages/{latest_id}", headers=headers)
@@ -401,16 +507,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 body_text = mail_data.get("text", "") or "No text content"
                 otp_match = re.search(r'\b\d{4,8}\b', body_text)
                 detected_otp = f"\n\n🔑 <b>Extracted OTP/Code:</b> <code>{otp_match.group(0)}</code>" if otp_match else ""
-                inbox_card = (
-                    "╔════════════════════════╗\n"
-                    "    📬  <b>LATEST EMAIL</b>\n"
-                    "╚════════════════════════╝\n\n"
-                    f"👤 <b>From:</b> <code>{sender}</code>\n"
-                    f"📌 <b>Subject:</b> <b>{subject}</b>"
-                    f"{detected_otp}\n\n"
-                    f"<blockquote>{html.escape(body_text[:1200])}</blockquote>"
-                )
-                await query.message.reply_text(inbox_card, reply_markup=get_main_keyboard(), parse_mode="HTML")
+                await query.message.reply_text(f"📬 <b>From:</b> {sender}\n📌 <b>Subject:</b> {subject}{detected_otp}\n\n<blockquote>{html.escape(body_text[:1200])}</blockquote>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
             except Exception:
                 await query.answer("❌ Error fetching", show_alert=True)
 
@@ -419,16 +516,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if user_id in active_watchers:
                     active_watchers[user_id].cancel()
                 del user_sessions[user_id]
-                await query.answer("🗑 Deleted!", show_alert=True)
-                await query.edit_message_text("🗑 <b>Session closed.</b>", reply_markup=get_main_keyboard(), parse_mode="HTML")
+                await query.answer("🗑 Session Closed!", show_alert=True)
+                await query.edit_message_text("🗑 <b>Session closed.</b>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
 
         elif data == "back_main":
+            waiting_for_custom_name[user_id] = False
             await start(update, context)
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("custom", custom_name_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
-    print("Syntax Empire Custom-Domain Core is Live...")
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
+    print("Syntax Empire Global Multi-Language Core is Live...")
     app.run_polling()
