@@ -5,6 +5,7 @@ import html
 import re
 import asyncio
 import sqlite3
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
@@ -29,7 +30,7 @@ CHANNELS = [
     }
 ]
 
-# Database Setup (Auto-Safe)
+# Database Setup (Auto-Safe Schema)
 conn = sqlite3.connect("bot_vault.db", check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute('''
@@ -57,64 +58,22 @@ user_sessions = {}
 active_watchers = {}
 waiting_for_custom_name = {}
 
-# Developer & Owner ASCII Badge Box
+# Premium Owner Information Card
 OWNER_CARD = (
-    "╔════════════════════════╗\n"
-    "   👑 <b>BOT OWNER DETAILS</b> 👑\n"
-    "╠════════════════════════╣\n"
-    "  👤 <b>Developer :</b> Rahul\n"
-    "  ⚡ <b>Brand     :</b> Syntax Empire\n"
-    "  🚀 <b>Engine    :</b> Fast Asynchronous Core\n"
-    "  💬 <b>Support   :</b> @syntaxkagc\n"
-    "╚════════════════════════╝"
+    "╭──────────────────────────────────╮\n"
+    "│   👑 <b>BOT OWNER & DEVELOPER</b>         │\n"
+    "├──────────────────────────────────┤\n"
+    "│ 👤 <b>Developer :</b> Rahul                 │\n"
+    "│ ⚡ <b>Brand     :</b> Syntax Empire         │\n"
+    "│ 🚀 <b>Engine    :</b> Fast Asynchronous Core │\n"
+    "│ 💬 <b>Support   :</b> @syntaxkagc           │\n"
+    "╰──────────────────────────────────╯"
 )
 
 LANGUAGES = {
-    "en": {
-        "flag": "🇬🇧 English",
-        "gen_btn": "⚡ Instant Fresh Email",
-        "custom_btn": "✏️ Custom Name Email",
-        "domain_btn": "🌐 Custom Domain",
-        "save_btn": "💾 Save to Vault",
-        "vault_btn": "📁 My Vault (Saved)",
-        "fake_btn": "🎭 Fake Profile Gen",
-        "refresh_btn": "📬 Manual Refresh",
-        "del_btn": "🗑 Delete Session",
-        "owner_btn": "👑 Bot Owner Info",
-        "lang_btn": "🌐 Change Language",
-        "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nYou must join all official channels:",
-        "verify_btn": "✅ Verify Membership"
-    },
-    "hi": {
-        "flag": "🇮🇳 हिन्दी",
-        "gen_btn": "⚡ नया ईमेल बनाएं",
-        "custom_btn": "✏️ मनपसंद नाम का ईमेल",
-        "domain_btn": "🌐 डोमेन बदलें",
-        "save_btn": "💾 ईमेल वॉल्ट में सेव करें",
-        "vault_btn": "📁 सेव किए गए ईमेल",
-        "fake_btn": "🎭 फेक प्रोफ़ाइल बनाएं",
-        "refresh_btn": "📬 इनबॉक्स चेक करें",
-        "del_btn": "🗑 सेशन डिलीट करें",
-        "owner_btn": "👑 ओनर की जानकारी",
-        "lang_btn": "🌐 भाषा बदलें",
-        "lock": "⚠️ <b>पहुंच प्रतिबंधित है!</b>\nसभी चैनल्स से जुड़ें:",
-        "verify_btn": "✅ सत्यापित करें"
-    },
-    "hinglish": {
-        "flag": "🇮🇳 Hinglish",
-        "gen_btn": "⚡ Instant Fresh Email",
-        "custom_btn": "✏️ Custom Name Email",
-        "domain_btn": "🌐 Custom Domain",
-        "save_btn": "💾 Save to Vault",
-        "vault_btn": "📁 My Vault (Saved)",
-        "fake_btn": "🎭 Fake Profile Generator",
-        "refresh_btn": "📬 Manual Refresh",
-        "del_btn": "🗑 Delete Session",
-        "owner_btn": "👑 Bot Owner Info",
-        "lang_btn": "🌐 Change Language",
-        "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nOfficial channels join karna zaroori hai:",
-        "verify_btn": "✅ Verify / Unlock Bot"
-    }
+    "en": {"flag": "🇬🇧 English", "verify_btn": "✅ Verify Membership", "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nYou must join all official channels:"},
+    "hi": {"flag": "🇮🇳 हिन्दी", "verify_btn": "✅ सत्यापित करें", "lock": "⚠️ <b>पहुंच प्रतिबंधित है!</b>\nसभी आधिकारिक चैनलों से जुड़ें:"},
+    "hinglish": {"flag": "🇮🇳 Hinglish", "verify_btn": "✅ Verify / Unlock Bot", "lock": "⚠️ <b>ACCESS RESTRICTED!</b>\nBot access karne ke liye official platforms join karna zaroori hai:"}
 }
 
 def get_user_lang(user_id):
@@ -167,37 +126,93 @@ def get_language_keyboard():
         if i + 1 < len(keys):
             row.append(InlineKeyboardButton(LANGUAGES[keys[i+1]]["flag"], callback_data=f"setlang_{keys[i+1]}"))
         keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("🔙 Back to Main Dashboard", callback_data="back_main")])
     return InlineKeyboardMarkup(keyboard)
 
-# MAIN DASHBOARD KEYBOARD WITH PROMINENT OWNER BUTTON
-def get_main_keyboard(lang_code):
-    l = LANGUAGES[lang_code]
+# ----------------- UI / KEYBOARD LAYOUTS ----------------- #
+
+def build_status_card(user_id):
+    sess = user_sessions.get(user_id)
+    if sess:
+        email = sess.get("address", "None")
+        created = sess.get("created_at", "Just now")
+        card = (
+            "╭──────────────────────────────────╮\n"
+            "│   ⚡ <b>SYNTAX EMPIRE DASHBOARD</b>   │\n"
+            "╰──────────────────────────────────╯\n\n"
+            f"📧 <b>Current Email:</b>\n<code>{email}</code>\n\n"
+            f"🟢 <b>Status:</b> Active & Auto-Listening\n"
+            f"⏱️ <b>Allocated:</b> {created}\n"
+            "🛡️ <b>Engine:</b> Fast-Track Interceptor"
+        )
+    else:
+        card = (
+            "╭──────────────────────────────────╮\n"
+            "│   ⚡ <b>SYNTAX EMPIRE DASHBOARD</b>   │\n"
+            "╰──────────────────────────────────╯\n\n"
+            "📧 <b>Current Email:</b> <i>No active session</i>\n"
+            "⚪ <b>Status:</b> Standby / Idle\n"
+            "💡 <i>Neeche diye gaye buttons se naya email create karein:</i>"
+        )
+    return card
+
+def get_main_keyboard(has_session=False):
+    if has_session:
+        keyboard = [
+            [
+                InlineKeyboardButton("🔄 Refresh Inbox", callback_data="check_mail"),
+                InlineKeyboardButton("💾 Save to Vault", callback_data="save_vault")
+            ],
+            [
+                InlineKeyboardButton("⚡ Instant Fresh Email", callback_data="gen_mail"),
+                InlineKeyboardButton("✏️ Custom Name Email", callback_data="btn_custom_name")
+            ],
+            [
+                InlineKeyboardButton("🌐 Custom Domain", callback_data="list_domains"),
+                InlineKeyboardButton("📂 My Vault (Saved)", callback_data="view_vault")
+            ],
+            [
+                InlineKeyboardButton("🛠️ Tools & Settings", callback_data="menu_tools"),
+                InlineKeyboardButton("🗑️ Delete Session", callback_data="del_mail")
+            ],
+            [
+                InlineKeyboardButton("👑 Bot Owner Info", callback_data="view_owner"),
+                InlineKeyboardButton("👑 Syntax Community", url="https://t.me/syntaxredirect")
+            ]
+        ]
+    else:
+        keyboard = [
+            [
+                InlineKeyboardButton("⚡ Instant Fresh Email", callback_data="gen_mail"),
+                InlineKeyboardButton("✏️ Custom Name Email", callback_data="btn_custom_name")
+            ],
+            [
+                InlineKeyboardButton("🌐 Custom Domain", callback_data="list_domains"),
+                InlineKeyboardButton("📂 My Vault (Saved)", callback_data="view_vault")
+            ],
+            [
+                InlineKeyboardButton("🛠️ Tools & Settings", callback_data="menu_tools"),
+                InlineKeyboardButton("👑 Bot Owner Info", callback_data="view_owner")
+            ],
+            [
+                InlineKeyboardButton("👑 Syntax Community", url="https://t.me/syntaxredirect")
+            ]
+        ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_tools_keyboard():
     keyboard = [
         [
-            InlineKeyboardButton(l["gen_btn"], callback_data="gen_mail"),
-            InlineKeyboardButton(l["custom_btn"], callback_data="btn_custom_name")
+            InlineKeyboardButton("🎭 Fake Profile Generator", callback_data="fake_id"),
+            InlineKeyboardButton("🌍 Change Language", callback_data="open_lang_menu")
         ],
         [
-            InlineKeyboardButton(l["domain_btn"], callback_data="list_domains"),
-            InlineKeyboardButton(l["save_btn"], callback_data="save_vault")
-        ],
-        [
-            InlineKeyboardButton(l["vault_btn"], callback_data="view_vault"),
-            InlineKeyboardButton(l["fake_btn"], callback_data="fake_id")
-        ],
-        [
-            InlineKeyboardButton(l["refresh_btn"], callback_data="check_mail"),
-            InlineKeyboardButton(l["del_btn"], callback_data="del_mail")
-        ],
-        [
-            InlineKeyboardButton(l["owner_btn"], callback_data="view_owner")
-        ],
-        [
-            InlineKeyboardButton(l["lang_btn"], callback_data="open_lang_menu"),
-            InlineKeyboardButton("👑 Syntax Community", url="https://t.me/syntaxredirect")
+            InlineKeyboardButton("🔙 Back to Main Dashboard", callback_data="back_main")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+# ----------------- BACKGROUND OTP LISTENER ----------------- #
 
 async def watch_inbox(bot, user_id, token, address):
     headers = {"Authorization": f"Bearer {token}"}
@@ -227,21 +242,24 @@ async def watch_inbox(bot, user_id, token, address):
                         body = mail_data.get("text", "") or "No text content"
                         
                         otp_match = re.search(r'\b\d{4,8}\b', body)
-                        detected_otp = f"\n\n🔑 <b>EXTRACTED OTP/CODE:</b> <code>{otp_match.group(0)}</code>" if otp_match else ""
+                        detected_otp = f"\n\n🔑 <b>EXTRACTED OTP / CODE:</b> <code>{otp_match.group(0)}</code>" if otp_match else ""
                         
                         alert_card = (
-                            "╔════════════════════════╗\n"
-                            "   🔔 <b>LIVE INCOMING OTP ALERT!</b> 🔔\n"
-                            "╚════════════════════════╝\n\n"
+                            "╭──────────────────────────────────╮\n"
+                            "│   🔔 <b>NEW OTP / EMAIL RECEIVED</b>     │\n"
+                            "╰──────────────────────────────────╯\n\n"
                             f"👤 <b>From:</b> <code>{sender}</code>\n"
                             f"📌 <b>Subject:</b> <b>{subject}</b>"
                             f"{detected_otp}\n\n"
-                            "📝 <b>Body:</b>\n"
+                            "📝 <b>Message Content:</b>\n"
                             f"<blockquote>{html.escape(body[:1200])}</blockquote>\n\n"
                             "⚡ <i>Auto-intercepted by Syntax Empire Core</i>"
                         )
-                        lang_code = get_user_lang(user_id)
-                        await bot.send_message(chat_id=user_id, text=alert_card, parse_mode="HTML", reply_markup=get_main_keyboard(lang_code))
+                        inbox_actions = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔄 Refresh Inbox", callback_data="check_mail")],
+                            [InlineKeyboardButton("🔙 Back to Main Dashboard", callback_data="back_main")]
+                        ])
+                        await bot.send_message(chat_id=user_id, text=alert_card, parse_mode="HTML", reply_markup=inbox_actions)
         except Exception:
             pass
         await asyncio.sleep(4)
@@ -259,6 +277,8 @@ async def create_email_account(domain, prefix=None):
         token = tok_resp.json().get("token")
         return email_address, password, token
 
+# ----------------- TELEGRAM HANDLERS ----------------- #
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang_code = get_user_lang(user_id)
@@ -266,9 +286,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     joined = await check_user_membership(context.bot, user_id)
     if not joined:
         lock_text = (
-            "╔════════════════════════╗\n"
-            "   🔒 <b>ACCESS RESTRICTED!</b> 🔒\n"
-            "╚════════════════════════╝\n\n"
+            "╭──────────────────────────────────╮\n"
+            "│   🔒 <b>ACCESS RESTRICTED</b>            │\n"
+            "╰──────────────────────────────────╯\n\n"
             f"{LANGUAGES[lang_code]['lock']}"
         )
         if update.message:
@@ -277,19 +297,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.message.edit_text(lock_text, reply_markup=get_force_join_keyboard(lang_code), parse_mode="HTML")
         return
 
-    welcome_text = (
-        f"{OWNER_CARD}\n\n"
-        "⚡ <b>Next-Gen High-Speed Disposable Temp-Mail Engine</b>\n\n"
-        "👇 <i>Neeche diye gaye buttons se operate karein:</i>"
-    )
+    has_session = user_id in user_sessions
+    welcome_text = build_status_card(user_id)
+    
     if update.message:
-        await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+        await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard(has_session), parse_mode="HTML")
     elif update.callback_query:
-        await update.callback_query.message.edit_text(welcome_text, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+        await update.callback_query.message.edit_text(welcome_text, reply_markup=get_main_keyboard(has_session), parse_mode="HTML")
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    lang_code = get_user_lang(user_id)
     text = update.message.text.strip().lower()
 
     if user_id in waiting_for_custom_name and waiting_for_custom_name[user_id]:
@@ -297,10 +314,10 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         clean_prefix = re.sub(r'[^a-z0-9]', '', text)
 
         if len(clean_prefix) < 3:
-            await update.message.reply_text("⚠️ Minimum 3 characters required!", reply_markup=get_main_keyboard(lang_code))
+            await update.message.reply_text("⚠️ <i>Minimum 3 alphanumeric characters required!</i>", reply_markup=get_main_keyboard(user_id in user_sessions), parse_mode="HTML")
             return
 
-        await update.message.reply_text(f"⏳ <i>Allocating `{clean_prefix}` email...</i>", parse_mode="HTML")
+        await update.message.reply_text(f"⏳ <i>Allocating `{clean_prefix}` domain...</i>", parse_mode="HTML")
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
                 dom_resp = await client.get("https://api.mail.tm/domains")
@@ -308,34 +325,32 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 domain = domains[0]["domain"]
                 email_addr, pwd, tok = await create_email_account(domain, prefix=clean_prefix)
                 if not email_addr:
-                    await update.message.reply_text("⚠️ Name already taken! Try another.", reply_markup=get_main_keyboard(lang_code))
+                    await update.message.reply_text("⚠️ <i>Username already taken! Please choose another.</i>", reply_markup=get_main_keyboard(user_id in user_sessions), parse_mode="HTML")
                     return
 
-                user_sessions[user_id] = {"address": email_addr, "password": pwd, "token": tok}
+                user_sessions[user_id] = {
+                    "address": email_addr,
+                    "password": pwd,
+                    "token": tok,
+                    "created_at": datetime.now().strftime("%I:%M %p")
+                }
                 if user_id in active_watchers:
                     active_watchers[user_id].cancel()
                 active_watchers[user_id] = asyncio.create_task(watch_inbox(context.bot, user_id, tok, email_addr))
 
-                mail_card = (
-                    "╔════════════════════════╗\n"
-                    "   👑 <b>CUSTOM EMAIL READY!</b>\n"
-                    "╚════════════════════════╝\n\n"
-                    f"📧 <b>Your Custom Email:</b>\n<code>{email_addr}</code>\n\n"
-                    "🎯 <b>Status:</b> 🟢 <b>Auto-Listening Active!</b>"
-                )
-                await update.message.reply_text(mail_card, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+                card = build_status_card(user_id)
+                await update.message.reply_text(card, reply_markup=get_main_keyboard(has_session=True), parse_mode="HTML")
             except Exception:
-                await update.message.reply_text("❌ Network timeout!", reply_markup=get_main_keyboard(lang_code))
+                await update.message.reply_text("❌ <i>Network error. Please try again!</i>", reply_markup=get_main_keyboard(user_id in user_sessions), parse_mode="HTML")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
-    lang_code = get_user_lang(user_id)
 
     joined = await check_user_membership(context.bot, user_id)
     if not joined and data != "verify_join":
-        await query.answer("❌ Please join required channels!", show_alert=True)
+        await query.answer("❌ Join all official channels to unlock!", show_alert=True)
         return
 
     await query.answer()
@@ -344,20 +359,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return
 
-    # Direct Click on Owner Info Button
+    if data == "back_main":
+        waiting_for_custom_name[user_id] = False
+        await start(update, context)
+        return
+
+    if data == "menu_tools":
+        tools_card = (
+            "╭──────────────────────────────────╮\n"
+            "│   🛠️ <b>UTILITIES & SETTINGS</b>       │\n"
+            "╰──────────────────────────────────╯\n\n"
+            "Select an action from the options below:"
+        )
+        await query.edit_message_text(tools_card, reply_markup=get_tools_keyboard(), parse_mode="HTML")
+        return
+
     if data == "view_owner":
-        owner_details_msg = (
+        owner_msg = (
             f"{OWNER_CARD}\n\n"
-            "Official Telegram project engineered by <b>Syntax Empire</b>.\n"
-            "For inquiries, custom bot development, or promotions, reach out to our community!"
+            "Official project engineered under <b>Syntax Empire</b>.\n"
+            "For collaborations, support, or promotions, contact our support community."
         )
         back_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Dashboard", callback_data="back_main")]])
-        await query.edit_message_text(owner_details_msg, reply_markup=back_kb, parse_mode="HTML")
+        await query.edit_message_text(owner_msg, reply_markup=back_kb, parse_mode="HTML")
         return
 
     if data == "open_lang_menu":
         await query.edit_message_text(
-            "🌐 <b>SELECT YOUR LANGUAGE / अपनी भाषा चुनें:</b>",
+            "🌐 <b>SELECT LANGUAGE / भाषा चुनें:</b>",
             reply_markup=get_language_keyboard(),
             parse_mode="HTML"
         )
@@ -374,7 +403,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         waiting_for_custom_name[user_id] = True
         cancel_kb = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="back_main")]])
         await query.edit_message_text(
-            "✏️ <b>CUSTOM NAME:</b>\n\nSend your desired name in chat (e.g. <code>syntaxvip99</code>):",
+            "╭──────────────────────────────────╮\n"
+            "│   ✏️ <b>CUSTOM NAME EMAIL</b>           │\n"
+            "╰──────────────────────────────────╯\n\n"
+            "Apna manpasand username chat me type karke bhejein:\n"
+            "<i>(Example: <code>syntaxpro</code>, <code>rahul99</code>)</i>",
             reply_markup=cancel_kb,
             parse_mode="HTML"
         )
@@ -389,24 +422,37 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for d in domains[:6]:
                     dom_name = d["domain"]
                     buttons.append([InlineKeyboardButton(f"🌐 @{dom_name}", callback_data=f"seldom_{dom_name}")])
-                buttons.append([InlineKeyboardButton("🔙 Back", callback_data="back_main")])
-                await query.edit_message_text("🌐 <b>AVAILABLE DOMAINS:</b>", reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+                buttons.append([InlineKeyboardButton("🔙 Back to Main Dashboard", callback_data="back_main")])
+                await query.edit_message_text(
+                    "╭──────────────────────────────────╮\n"
+                    "│   🌐 <b>CHOOSE PREFERRED DOMAIN</b>    │\n"
+                    "╰──────────────────────────────────╯\n\n"
+                    "Select an active domain from the list:",
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                    parse_mode="HTML"
+                )
             except Exception:
-                await query.edit_message_text("❌ Domain fetch error", reply_markup=get_main_keyboard(lang_code))
+                await query.edit_message_text("❌ <i>Error fetching domain list.</i>", reply_markup=get_main_keyboard(user_id in user_sessions), parse_mode="HTML")
 
         elif data.startswith("seldom_"):
             chosen_domain = data.replace("seldom_", "")
             email_addr, pwd, tok = await create_email_account(chosen_domain)
             if not email_addr:
-                await query.edit_message_text("⚠️ Rate limit, try another domain!", reply_markup=get_main_keyboard(lang_code))
+                await query.edit_message_text("⚠️ <i>Domain busy. Please select another!</i>", reply_markup=get_main_keyboard(user_id in user_sessions), parse_mode="HTML")
                 return
 
-            user_sessions[user_id] = {"address": email_addr, "password": pwd, "token": tok}
+            user_sessions[user_id] = {
+                "address": email_addr,
+                "password": pwd,
+                "token": tok,
+                "created_at": datetime.now().strftime("%I:%M %p")
+            }
             if user_id in active_watchers:
                 active_watchers[user_id].cancel()
             active_watchers[user_id] = asyncio.create_task(watch_inbox(context.bot, user_id, tok, email_addr))
 
-            await query.edit_message_text(f"📧 <b>Email:</b> <code>{email_addr}</code>\n🟢 <b>Auto-Listening Active!</b>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+            card = build_status_card(user_id)
+            await query.edit_message_text(card, reply_markup=get_main_keyboard(has_session=True), parse_mode="HTML")
 
         elif data == "gen_mail":
             try:
@@ -415,14 +461,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 domain = domains[0]["domain"]
                 email_addr, pwd, tok = await create_email_account(domain)
 
-                user_sessions[user_id] = {"address": email_addr, "password": pwd, "token": tok}
+                user_sessions[user_id] = {
+                    "address": email_addr,
+                    "password": pwd,
+                    "token": tok,
+                    "created_at": datetime.now().strftime("%I:%M %p")
+                }
                 if user_id in active_watchers:
                     active_watchers[user_id].cancel()
                 active_watchers[user_id] = asyncio.create_task(watch_inbox(context.bot, user_id, tok, email_addr))
 
-                await query.edit_message_text(f"⚡ <b>Fresh Email:</b>\n<code>{email_addr}</code>\n\n🟢 <b>Listening for OTPs...</b>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+                card = build_status_card(user_id)
+                await query.edit_message_text(card, reply_markup=get_main_keyboard(has_session=True), parse_mode="HTML")
             except Exception:
-                await query.edit_message_text("❌ Timeout!", reply_markup=get_main_keyboard(lang_code))
+                await query.edit_message_text("❌ <i>Connection timeout. Please retry!</i>", reply_markup=get_main_keyboard(user_id in user_sessions), parse_mode="HTML")
 
         elif data == "save_vault":
             if user_id not in user_sessions:
@@ -432,19 +484,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("INSERT OR REPLACE INTO vault (user_id, email, password, token) VALUES (?, ?, ?, ?)",
                            (user_id, sess["address"], sess["password"], sess["token"]))
             conn.commit()
-            await query.answer("💾 Email Saved into Vault!", show_alert=True)
+            await query.answer("💾 Email safely stored in your Vault!", show_alert=True)
 
         elif data == "view_vault":
             cursor.execute("SELECT email FROM vault WHERE user_id = ?", (user_id,))
             saved = cursor.fetchall()
             if not saved:
-                await query.answer("📁 Vault is empty!", show_alert=True)
+                await query.answer("📂 Vault is empty! Save an email first.", show_alert=True)
                 return
             buttons = []
             for item in saved[:5]:
                 buttons.append([InlineKeyboardButton(f"📬 {item[0][:22]}", callback_data=f"restore_{item[0]}")])
-            buttons.append([InlineKeyboardButton("🔙 Back", callback_data="back_main")])
-            await query.edit_message_text("📁 <b>SAVED VAULT:</b>\nTap to restore:", reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+            buttons.append([InlineKeyboardButton("🔙 Back to Main Dashboard", callback_data="back_main")])
+            await query.edit_message_text(
+                "╭──────────────────────────────────╮\n"
+                "│   📂 <b>SAVED EMAIL VAULT</b>           │\n"
+                "╰──────────────────────────────────╯\n\n"
+                "Select a saved email to restore & activate inbox listening:",
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode="HTML"
+            )
 
         elif data.startswith("restore_"):
             target_email = data.replace("restore_", "")
@@ -452,27 +511,36 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             res = cursor.fetchone()
             if res:
                 email_addr, pwd, tok = res
-                user_sessions[user_id] = {"address": email_addr, "password": pwd, "token": tok}
+                user_sessions[user_id] = {
+                    "address": email_addr,
+                    "password": pwd,
+                    "token": tok,
+                    "created_at": datetime.now().strftime("%I:%M %p")
+                }
                 if user_id in active_watchers:
                     active_watchers[user_id].cancel()
                 active_watchers[user_id] = asyncio.create_task(watch_inbox(context.bot, user_id, tok, email_addr))
-                await query.edit_message_text(f"🔄 <b>RESTORED:</b> <code>{email_addr}</code>\n🟢 <b>Listening for OTPs...</b>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+
+                card = build_status_card(user_id)
+                await query.edit_message_text(card, reply_markup=get_main_keyboard(has_session=True), parse_mode="HTML")
 
         elif data == "fake_id":
             name, address, dob = generate_fake_profile()
             profile_card = (
-                "╔════════════════════════╗\n"
-                "    🎭  <b>FAKE PROFILE DATA</b>\n"
-                "╚════════════════════════╝\n\n"
-                f"👤 <b>Full Name:</b> <code>{name}</code>\n"
-                f"🎂 <b>Date of Birth:</b> <code>{dob}</code>\n"
-                f"🏠 <b>US Address:</b> <code>{address}</code>\n"
+                "╭──────────────────────────────────╮\n"
+                "│   🎭 <b>MOCK IDENTITY PROFILE</b>       │\n"
+                "╰──────────────────────────────────╯\n\n"
+                f"👤 <b>Full Name :</b> <code>{name}</code>\n"
+                f"🎂 <b>Birthdate :</b> <code>{dob}</code>\n"
+                f"🏠 <b>US Address:</b> <code>{address}</code>\n\n"
+                "💡 <i>Tap any detail to copy directly.</i>"
             )
-            await query.message.reply_text(profile_card, reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+            back_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Tools", callback_data="menu_tools")]])
+            await query.edit_message_text(profile_card, reply_markup=back_kb, parse_mode="HTML")
 
         elif data == "check_mail":
             if user_id not in user_sessions:
-                await query.answer("⚠️ Generate an email first!", show_alert=True)
+                await query.answer("⚠️ Pehle email create karein!", show_alert=True)
                 return
             token = user_sessions[user_id]["token"]
             headers = {"Authorization": f"Bearer {token}"}
@@ -480,7 +548,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg_resp = await client.get("https://api.mail.tm/messages", headers=headers)
                 messages = msg_resp.json().get("hydra:member", [])
                 if not messages:
-                    await query.answer("📭 Inbox empty!", show_alert=True)
+                    await query.answer("📭 Inbox empty! No incoming messages yet.", show_alert=True)
                     return
                 latest_id = messages[0]["id"]
                 detail_resp = await client.get(f"https://api.mail.tm/messages/{latest_id}", headers=headers)
@@ -489,35 +557,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 subject = html.escape(mail_data.get("subject", "No Subject"))
                 body_text = mail_data.get("text", "") or "No text content"
                 otp_match = re.search(r'\b\d{4,8}\b', body_text)
-                detected_otp = f"\n\n🔑 <b>Extracted OTP/Code:</b> <code>{otp_match.group(0)}</code>" if otp_match else ""
-                await query.message.reply_text(f"📬 <b>From:</b> {sender}\n📌 <b>Subject:</b> {subject}{detected_otp}\n\n<blockquote>{html.escape(body_text[:1200])}</blockquote>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+                detected_otp = f"\n\n🔑 <b>EXTRACTED OTP / CODE:</b> <code>{otp_match.group(0)}</code>" if otp_match else ""
+                
+                inbox_view = (
+                    "╭──────────────────────────────────╮\n"
+                    "│   📨 <b>LATEST INBOX MESSAGE</b>         │\n"
+                    "╰──────────────────────────────────╯\n\n"
+                    f"👤 <b>From:</b> <code>{sender}</code>\n"
+                    f"📌 <b>Subject:</b> <b>{subject}</b>"
+                    f"{detected_otp}\n\n"
+                    "📝 <b>Message Content:</b>\n"
+                    f"<blockquote>{html.escape(body_text[:1200])}</blockquote>"
+                )
+                await query.message.reply_text(inbox_view, reply_markup=get_main_keyboard(has_session=True), parse_mode="HTML")
             except Exception:
-                await query.answer("❌ Error fetching", show_alert=True)
+                await query.answer("❌ Error reading inbox.", show_alert=True)
 
         elif data == "del_mail":
             if user_id in user_sessions:
                 if user_id in active_watchers:
                     active_watchers[user_id].cancel()
                 del user_sessions[user_id]
-                await query.answer("🗑 Session Closed!", show_alert=True)
-                await query.edit_message_text("🗑 <b>Session closed.</b>", reply_markup=get_main_keyboard(lang_code), parse_mode="HTML")
+                await query.answer("🗑️ Session closed!", show_alert=True)
+                card = build_status_card(user_id)
+                await query.edit_message_text(card, reply_markup=get_main_keyboard(has_session=False), parse_mode="HTML")
 
-        elif data == "back_main":
-            waiting_for_custom_name[user_id] = False
-            await start(update, context)
+# ----------------- SERVER INITIALIZATION ----------------- #
 
 if __name__ == '__main__':
     app = (
         ApplicationBuilder()
         .token(BOT_TOKEN)
-        .read_timeout(30)
-        .write_timeout(30)
-        .connect_timeout(30)
-        .pool_timeout(30)
+        .read_timeout(35)
+        .write_timeout(35)
+        .connect_timeout(35)
+        .pool_timeout(35)
         .build()
     )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
-    print("Syntax Empire Global Multi-Language Core is Live...")
+    print("Syntax Empire Commercial-Grade Core is Live...")
     app.run_polling()
