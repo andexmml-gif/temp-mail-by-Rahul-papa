@@ -12,7 +12,10 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    ConversationHandler,
     ContextTypes,
+    filters,
 )
 
 # ---------------- CONFIGURATION & LOGGING ----------------
@@ -22,9 +25,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Updated Valid Bot Token
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8604538821:AAEXkRMTPA5jnuyI0YzNaiyeCelBuWhWJe4")
 BASE_API_URL = "https://api.mail.tm"
+
+# States for custom username
+WAITING_CUSTOM_NAME = 1
 
 # ---------------- RENDER 24/7 DUMMY PORT LISTENER ----------------
 class RenderHealthServer(BaseHTTPRequestHandler):
@@ -141,17 +146,19 @@ def get_user_vault(user_id):
     return rows
 
 # ---------------- MAIL ENGINE CLIENT (MAIL.TM) ----------------
-async def fetch_available_domain():
+async def fetch_available_domains():
     async with httpx.AsyncClient(timeout=10.0) as client:
         res = await client.get(f"{BASE_API_URL}/domains")
         if res.status_code == 200:
             domains = res.json().get("hydra:member", [])
-            if domains:
-                return domains[0]["domain"]
-    return "uberip.com"
+            return [d["domain"] for d in domains if d.get("isActive", True)]
+    return ["uberip.com"]
 
-async def create_mail_account(custom_user=None):
-    domain = await fetch_available_domain()
+async def create_mail_account(custom_user=None, domain=None):
+    if not domain:
+        domains = await fetch_available_domains()
+        domain = domains[0] if domains else "uberip.com"
+        
     random_str = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
     username = custom_user.strip().lower() if custom_user else random_str
     email = f"{username}@{domain}"
@@ -199,7 +206,8 @@ STRINGS = {
         "vault_saved": "✅ Current email saved to your private Vault!",
         "vault_empty": "📁 Vault is empty! Save emails using the Save button.",
         "session_cleared": "Session Cleared",
-        "coming_soon": "⚡ This feature will be active in the next version update!"
+        "ask_custom_name": "✏️ <b>Enter your desired email username:</b>\n<i>(e.g., rahul, king, boss99)</i>",
+        "select_domain": "🌐 <b>Select an available domain:</b>"
     },
     "hi": {
         "title": "सिंटेक्स एम्पायर डैशबोर्ड",
@@ -223,7 +231,8 @@ STRINGS = {
         "vault_saved": "✅ ईमेल सफलतापूर्वक आपके प्राइवेट वॉल्ट में सेव हो गया!",
         "vault_empty": "📁 वॉल्ट खाली है! सेव बटन दबाकर ईमेल सुरक्षित रखें।",
         "session_cleared": "सेशन डिलीट हो गया",
-        "coming_soon": "⚡ यह फीचर अगले अपडेट में चालू होगा!"
+        "ask_custom_name": "✏️ <b>अपना मनपसंद यूजरनेम टाइप करके भेजें:</b>\n<i>(जैसे: rahul, king, boss99)</i>",
+        "select_domain": "🌐 <b>उपलब्ध डोमेन में से एक चुनें:</b>"
     }
 }
 
@@ -319,6 +328,51 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
+async def prompt_custom_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    lang = get_user_lang(user_id)
+    t = STRINGS.get(lang, STRINGS["en"])
+
+    cancel_btn = InlineKeyboardMarkup([[InlineKeyboardButton(t["btn_back"], callback_data="cancel_custom")]])
+    await query.edit_message_text(text=t["ask_custom_name"], reply_markup=cancel_btn, parse_mode=ParseMode.HTML)
+    return WAITING_CUSTOM_NAME
+
+async def receive_custom_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang = get_user_lang(user_id)
+    raw_name = update.message.text.strip().replace(" ", "")
+
+    email, token, password = await create_mail_account(custom_user=raw_name)
+    if email:
+        save_session(user_id, email, token, password)
+        await update.message.reply_text(
+            text=render_dashboard_text(email, lang),
+            reply_markup=get_main_dashboard_markup(lang),
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            text="⚠️ Name unavailable or format invalid! Please try another name or send /start."
+        )
+    return ConversationHandler.END
+
+async def cancel_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    lang = get_user_lang(user_id)
+    session = get_session(user_id)
+    email = session[0] if session else "Session Inactive"
+
+    await query.edit_message_text(
+        text=render_dashboard_text(email, lang),
+        reply_markup=get_main_dashboard_markup(lang),
+        parse_mode=ParseMode.HTML
+    )
+    return ConversationHandler.END
+
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -363,6 +417,25 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             )
         else:
             await query.answer("API Busy! Please retry.", show_alert=True)
+
+    elif data == "custom_domain":
+        domains = await fetch_available_domains()
+        kb = [[InlineKeyboardButton(f"🌐 @{d}", callback_data=f"set_domain_{d}")] for d in domains]
+        kb.append([InlineKeyboardButton(t["btn_back"], callback_data="back_dashboard")])
+        await query.edit_message_text(text=t["select_domain"], reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.HTML)
+
+    elif data.startswith("set_domain_"):
+        chosen_domain = data.replace("set_domain_", "")
+        email, token, password = await create_mail_account(domain=chosen_domain)
+        if email:
+            save_session(user_id, email, token, password)
+            await query.edit_message_text(
+                text=render_dashboard_text(email, lang),
+                reply_markup=get_main_dashboard_markup(lang),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await query.answer("Error allocating domain!", show_alert=True)
 
     elif data == "save_to_vault":
         session = get_session(user_id)
@@ -446,9 +519,6 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             parse_mode=ParseMode.HTML
         )
 
-    elif data in ["custom_name", "custom_domain"]:
-        await query.answer(t["coming_soon"], show_alert=True)
-
     elif data == "back_dashboard":
         session = get_session(user_id)
         email = session[0] if session else "Session Inactive"
@@ -462,13 +532,22 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 def main():
     init_db()
 
-    # Launch Port Listener thread for Render Web Service health-check
     server_thread = threading.Thread(target=start_background_port, daemon=True)
     server_thread.start()
 
     logger.info("Initializing Syntax Empire Telegram Core Engine...")
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Custom Name Conversation Handler
+    custom_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(prompt_custom_name, pattern="^custom_name$")],
+        states={
+            WAITING_CUSTOM_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_custom_name)]
+        },
+        fallbacks=[CallbackQueryHandler(cancel_custom, pattern="^cancel_custom$")]
+    )
+
+    application.add_handler(custom_conv)
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CallbackQueryHandler(button_callback_handler))
 
