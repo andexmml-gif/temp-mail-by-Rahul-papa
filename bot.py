@@ -1,577 +1,500 @@
 import os
+import random
+import string
 from threading import Thread
 from flask import Flask
+import requests
+import telebot
+from telebot import types
 
-web_app = Flask(__name__)
+# ================= CONFIGURATION =================
+BOT_TOKEN = "8604538821:AAEXkRMTPA5jnuyI0YzNaiyeCelBuWhWJe4"
+BOT_USERNAME = "@TDLE_robot"
+
+CHANNEL_USERNAME = "@syntaxredirect"
+CHANNEL_LINK = "https://t.me/syntaxredirect"
+
+GROUP_USERNAME = "@syntaxkagc"
+GROUP_LINK = "https://t.me/syntaxkagc"
+
+bot = telebot.TeleBot(BOT_TOKEN)
+
+user_emails = {}
+user_lang = {}
+user_state = {}  # Tracks user input state for custom username
+
+# ================= MULTI-LANGUAGE STRINGS =================
+STRINGS = {
+    "en": {
+        "welcome": (
+            f"👋 Welcome to {BOT_USERNAME}!\n\nGenerate disposable temporary"
+            " emails, choose custom names/domains, and receive OTPs instantly."
+        ),
+        "force_join": (
+            "⚠️ **Access Denied!**\n\nYou must join our Channel and Group"
+            " first.\n\nJoin below, then press **Verify**."
+        ),
+        "btn_channel": "📢 1. Join Channel",
+        "btn_group": "👥 2. Join Group",
+        "btn_verify": "🔄 Check / Verify",
+        "btn_gen": "🎲 Random Email",
+        "btn_custom": "✏️ Custom Name",
+        "btn_domain": "🌐 Choose Domain",
+        "btn_inbox": "📥 Check Inbox",
+        "btn_del": "🗑 Delete Email",
+        "btn_lang": "🌐 Change Language",
+        "verified_success": "✅ Verification Successful! Choose an option:",
+        "not_joined": (
+            "❌ You have not joined both channels yet! Please join first."
+        ),
+        "mail_generated": (
+            "✅ **Your Temporary Email:**\n`{email}`\n\n👉 Use this email,"
+            " then click **Check Inbox** to view OTPs."
+        ),
+        "inbox_empty": (
+            "📭 Inbox is empty! ({email})\nNo incoming messages yet."
+        ),
+        "no_email": "⚠️ No active email! Generate or create one first.",
+        "mail_deleted": "🗑 Email deleted successfully!",
+        "ask_custom_name": (
+            "✏️ **Send me your custom name** (letters & numbers only):\nExample:"
+            " `rahulboss99`"
+        ),
+        "invalid_custom_name": (
+            "❌ Invalid format! Use only letters and numbers without spaces."
+        ),
+        "choose_domain_txt": (
+            "🌐 Select a domain to generate an email with that domain:"
+        ),
+    },
+    "hi": {
+        "welcome": (
+            f"👋 {BOT_USERNAME} में आपका स्वागत है!\n\nटेम्परेरी ईमेल जनरेट"
+            " करें, अपनी पसंद का कस्टम नाम/डोमेन चुनें और तुरंत OTP पाएं।"
+        ),
+        "force_join": (
+            "⚠️ **पहुंच प्रतिबंधित!**\n\nबॉट का उपयोग करने के लिए चैनल और ग्रुप"
+            " जॉइन करना अनिवार्य है।\n\nनीचे दिए बटन से जॉइन करें और"
+            " **सत्यापित करें**।"
+        ),
+        "btn_channel": "📢 1. चैनल जॉइन करें",
+        "btn_group": "👥 2. ग्रुप जॉइन करें",
+        "btn_verify": "🔄 जॉइन चेक करें",
+        "btn_gen": "🎲 रैंडम ईमेल",
+        "btn_custom": "✏️ कस्टम नाम ईमेल",
+        "btn_domain": "🌐 डोमेन चुनें",
+        "btn_inbox": "📥 इनबॉक्स देखें",
+        "btn_del": "🗑 ईमेल हटाएं",
+        "btn_lang": "🌐 भाषा बदलें",
+        "verified_success": "✅ सत्यापन सफल हुआ! अब आप उपयोग कर सकते हैं:",
+        "not_joined": "❌ आपने अभी तक दोनों जॉइन नहीं किए हैं!",
+        "mail_generated": (
+            "✅ **आपका टेम्प ईमेल:**\n`{email}`\n\n👉 इसे OTP के लिए इस्तेमाल"
+            " करें, फिर **इनबॉक्स देखें** दबाएं।"
+        ),
+        "inbox_empty": (
+            "📭 इनबॉक्स खाली है! ({email})\nअभी कोई नया मैसेज नहीं मिला।"
+        ),
+        "no_email": "⚠️ कोई सक्रिय ईमेल नहीं मिला! पहले नया ईमेल बनाएं।",
+        "mail_deleted": "🗑 ईमेल सफलतापूर्वक हटा दिया गया!",
+        "ask_custom_name": (
+            "✏️ **अपना मनपसंद नाम लिखकर भेजें** (सिर्फ लेटर्स और"
+            " नंबर):\nउदाहरण: `rahulboss99`"
+        ),
+        "invalid_custom_name": (
+            "❌ गलत नाम! सिर्फ बिना स्पेस के लेटर्स और नंबर का इस्तेमाल करें।"
+        ),
+        "choose_domain_txt": (
+            "🌐 नीचे दिए गए डोमेन में से अपनी पसंद का डोमेन चुनें:"
+        ),
+    },
+    "es": {
+        "welcome": (
+            f"👋 ¡Bienvenido a {BOT_USERNAME}!\n\nGenera correos temporales,"
+            " elige nombre/dominio personalizado y recibe OTPs."
+        ),
+        "force_join": (
+            "⚠️ **¡Acceso denegado!**\n\nDebes unirte a nuestro Canal y"
+            " Grupo.\n\nÚnete abajo y presiona **Verificar**."
+        ),
+        "btn_channel": "📢 1. Unirse al Canal",
+        "btn_group": "👥 2. Unirse al Grupo",
+        "btn_verify": "🔄 Verificar",
+        "btn_gen": "🎲 Correo Aleatorio",
+        "btn_custom": "✏️ Nombre Personalizado",
+        "btn_domain": "🌐 Elegir Dominio",
+        "btn_inbox": "📥 Ver Mensajes",
+        "btn_del": "🗑 Eliminar Correo",
+        "btn_lang": "🌐 Cambiar Idioma",
+        "verified_success": "✅ ¡Verificación exitosa!",
+        "not_joined": "❌ ¡Aún no te has unido a ambos!",
+        "mail_generated": (
+            "✅ **Tu Correo:**\n`{email}`\n\n👉 Úsalo y luego pulsa **Ver"
+            " Mensajes**."
+        ),
+        "inbox_empty": "📭 ¡Bandeja vacía! ({email})",
+        "no_email": "⚠️ ¡No tienes correo activo!",
+        "mail_deleted": "🗑 ¡Correo eliminado con éxito!",
+        "ask_custom_name": (
+            "✏️ **Envía tu nombre personalizado** (solo letras y"
+            " números):\nEjemplo: `rahulboss99`"
+        ),
+        "invalid_custom_name": "❌ Formato inválido. Solo letras y números.",
+        "choose_domain_txt": "🌐 Selecciona un dominio:",
+    },
+}
 
 
-@web_app.route("/")
+def get_text(user_id, key):
+  lang = user_lang.get(user_id, "en")
+  return STRINGS.get(lang, STRINGS["en"]).get(key, "")
+
+
+# ================= KEEP-ALIVE SERVER (RENDER) =================
+server = Flask("")
+
+
+@server.route("/")
 def home():
-  return "Bot is alive and running!"
+  return f"{BOT_USERNAME} is Live and Running!"
 
 
 def run_web():
   port = int(os.environ.get("PORT", 8080))
-  web_app.run(host="0.0.0.0", port=port)
+  server.run(host="0.0.0.0", port=port)
 
 
-# Background thread me web server start karna
 Thread(target=run_web, daemon=True).start()
-import os
-import sqlite3
-import random
-import string
-import logging
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import httpx
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ConversationHandler,
-    ContextTypes,
-    filters,
-)
 
-# ---------------- CONFIGURATION & LOGGING ----------------
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8604538821:AAEXkRMTPA5jnuyI0YzNaiyeCelBuWhWJe4")
-BASE_API_URL = "https://api.mail.tm"
+# ================= FORCE JOIN CHECK =================
+def check_membership(chat_id, user_id):
+  try:
+    member = bot.get_chat_member(chat_id, user_id)
+    return member.status in ["member", "administrator", "creator"]
+  except Exception as e:
+    print(f"Join Check Error: {e}")
+    return False
 
-# States for custom username
-WAITING_CUSTOM_NAME = 1
 
-# ---------------- RENDER 24/7 DUMMY PORT LISTENER ----------------
-class RenderHealthServer(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"OK - Syntax Empire Temp Mail Core Running 24/7")
+def is_user_joined_all(user_id):
+  return check_membership(CHANNEL_USERNAME, user_id) and check_membership(
+      GROUP_USERNAME, user_id
+  )
 
-    def log_message(self, format, *args):
-        return
 
-def start_background_port():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), RenderHealthServer)
-    logger.info(f"Render Port Listener successfully started on port {port}")
-    server.serve_forever()
+# ================= KEYBOARDS =================
+def get_lang_markup():
+  markup = types.InlineKeyboardMarkup(row_width=3)
+  markup.add(
+      types.InlineKeyboardButton("English 🇬🇧", callback_data="setlang_en"),
+      types.InlineKeyboardButton("हिन्दी 🇮🇳", callback_data="setlang_hi"),
+      types.InlineKeyboardButton("Español 🌐", callback_data="setlang_es"),
+  )
+  return markup
 
-# ---------------- PERSISTENT SQLITE DATABASE ----------------
-DB_FILE = "syntax_vault.db"
 
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            user_id INTEGER PRIMARY KEY,
-            email TEXT,
-            token TEXT,
-            password TEXT
+def get_force_join_markup(user_id):
+  markup = types.InlineKeyboardMarkup(row_width=1)
+  markup.add(
+      types.InlineKeyboardButton(
+          get_text(user_id, "btn_channel"), url=CHANNEL_LINK
+      ),
+      types.InlineKeyboardButton(
+          get_text(user_id, "btn_group"), url=GROUP_LINK
+      ),
+      types.InlineKeyboardButton(
+          get_text(user_id, "btn_verify"), callback_data="check_join"
+      ),
+  )
+  return markup
+
+
+def get_main_menu_markup(user_id):
+  markup = types.InlineKeyboardMarkup(row_width=2)
+  b_rand = types.InlineKeyboardButton(
+      get_text(user_id, "btn_gen"), callback_data="gen_random"
+  )
+  b_custom = types.InlineKeyboardButton(
+      get_text(user_id, "btn_custom"), callback_data="gen_custom"
+  )
+  b_domain = types.InlineKeyboardButton(
+      get_text(user_id, "btn_domain"), callback_data="choose_domain"
+  )
+  b_inbox = types.InlineKeyboardButton(
+      get_text(user_id, "btn_inbox"), callback_data="check_inbox"
+  )
+  b_del = types.InlineKeyboardButton(
+      get_text(user_id, "btn_del"), callback_data="delete_mail"
+  )
+  b_lang = types.InlineKeyboardButton(
+      get_text(user_id, "btn_lang"), callback_data="change_lang"
+  )
+
+  markup.add(b_rand, b_custom)
+  markup.add(b_domain, b_inbox)
+  markup.add(b_del, b_lang)
+  return markup
+
+
+def get_domain_markup(domains):
+  markup = types.InlineKeyboardMarkup(row_width=1)
+  for dom in domains:
+    markup.add(
+        types.InlineKeyboardButton(
+            f"@{dom}", callback_data=f"seldom_{dom[:25]}"
         )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS vault (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            email TEXT,
-            password TEXT,
-            token TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS user_settings (
-            user_id INTEGER PRIMARY KEY,
-            lang TEXT DEFAULT 'en'
-        )
-    """)
-    conn.commit()
-    conn.close()
+    )
+  return markup
 
-def get_user_lang(user_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT lang FROM user_settings WHERE user_id = ?", (user_id,))
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else "en"
 
-def set_user_lang(user_id, lang):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO user_settings (user_id, lang)
-        VALUES (?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET lang=excluded.lang
-    """, (user_id, lang))
-    conn.commit()
-    conn.close()
+# ================= 1SECMAIL API =================
+def get_domains():
+  try:
+    res = requests.get(
+        "https://www.1secmail.com/api/v1/?action=getDomainList", timeout=10
+    )
+    if res.status_code == 200:
+      return res.json()
+  except Exception:
+    pass
+  return ["1secmail.com", "1secmail.org", "1secmail.net"]
 
-def save_session(user_id, email, token, password):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO sessions (user_id, email, token, password)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            email=excluded.email,
-            token=excluded.token,
-            password=excluded.password
-    """, (user_id, email, token, password))
-    conn.commit()
-    conn.close()
 
-def get_session(user_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT email, token, password FROM sessions WHERE user_id = ?", (user_id,))
-    row = c.fetchone()
-    conn.close()
-    return row
-
-def delete_session(user_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
-
-def add_to_vault(user_id, email, password, token):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("INSERT INTO vault (user_id, email, password, token) VALUES (?, ?, ?, ?)",
-              (user_id, email, password, token))
-    conn.commit()
-    conn.close()
-
-def get_user_vault(user_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT id, email, password FROM vault WHERE user_id = ? ORDER BY id DESC LIMIT 5", (user_id,))
-    rows = c.fetchall()
-    conn.close()
-    return rows
-
-# ---------------- MAIL ENGINE CLIENT (MAIL.TM) ----------------
-async def fetch_available_domains():
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        res = await client.get(f"{BASE_API_URL}/domains")
-        if res.status_code == 200:
-            domains = res.json().get("hydra:member", [])
-            return [d["domain"] for d in domains if d.get("isActive", True)]
-    return ["uberip.com"]
-
-async def create_mail_account(custom_user=None, domain=None):
-    if not domain:
-        domains = await fetch_available_domains()
-        domain = domains[0] if domains else "uberip.com"
-        
-    random_str = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
-    username = custom_user.strip().lower() if custom_user else random_str
-    email = f"{username}@{domain}"
-    password = "".join(random.choices(string.ascii_letters + string.digits, k=12))
-
-    payload = {"address": email, "password": password}
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        res = await client.post(f"{BASE_API_URL}/accounts", json=payload)
-        if res.status_code in [200, 201]:
-            token_res = await client.post(f"{BASE_API_URL}/token", json=payload)
-            if token_res.status_code == 200:
-                token = token_res.json().get("token")
-                return email, token, password
-    return None, None, None
-
-async def fetch_inbox_messages(token):
-    headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        res = await client.get(f"{BASE_API_URL}/messages", headers=headers)
-        if res.status_code == 200:
-            return res.json().get("hydra:member", [])
+def fetch_inbox(login, domain):
+  try:
+    res = requests.get(
+        f"https://www.1secmail.com/api/v1/?action=getMessages&login={login}&domain={domain}",
+        timeout=10,
+    )
+    return res.json() if res.status_code == 200 else []
+  except Exception:
     return []
 
-# ---------------- MULTILINGUAL STRING DICTIONARY ----------------
-STRINGS = {
-    "en": {
-        "title": "SYNTAX EMPIRE DASHBOARD",
-        "curr_email": "Current Email",
-        "status": "Active & Auto-Listening",
-        "allocated": "Allocated Cloud Session",
-        "engine": "Fast-Track Interceptor",
-        "btn_refresh": "🔄 Refresh Inbox",
-        "btn_save": "💾 Save to Vault",
-        "btn_instant": "⚡ Instant Fresh Email",
-        "btn_custom": "✏️ Custom Name Email",
-        "btn_domain": "🌐 Custom Domain",
-        "btn_vault": "📁 My Vault (Saved)",
-        "btn_tools": "🛠️ Tools & Settings",
-        "btn_delete": "🗑️ Delete Session",
-        "btn_owner": "👑 Bot Owner Info",
-        "btn_comm": "👑 Syntax Community",
-        "btn_back": "🔙 Back to Dashboard",
-        "btn_lang": "🌐 Switch Language (भाषा)",
-        "empty_inbox": "📭 Inbox is empty! No new OTP or email received.",
-        "vault_saved": "✅ Current email saved to your private Vault!",
-        "vault_empty": "📁 Vault is empty! Save emails using the Save button.",
-        "session_cleared": "Session Cleared",
-        "ask_custom_name": "✏️ <b>Enter your desired email username:</b>\n<i>(e.g., rahul, king, boss99)</i>",
-        "select_domain": "🌐 <b>Select an available domain:</b>"
-    },
-    "hi": {
-        "title": "सिंटेक्स एम्पायर डैशबोर्ड",
-        "curr_email": "वर्तमान ईमेल",
-        "status": "सक्रिय और ऑटो-सुनना चालू",
-        "allocated": "क्लाउड सेशन आवंटित",
-        "engine": "फास्ट-ट्रैक इंटरसेप्टर",
-        "btn_refresh": "🔄 इनबॉक्स रिफ्रेश",
-        "btn_save": "💾 वॉल्ट में सेव करें",
-        "btn_instant": "⚡ नया इंस्टेंट ईमेल",
-        "btn_custom": "✏️ कस्टम नाम ईमेल",
-        "btn_domain": "🌐 कस्टम डोमेन",
-        "btn_vault": "📁 मेरा वॉल्ट (सेव्ड)",
-        "btn_tools": "🛠️ टूल्स और सेटिंग्स",
-        "btn_delete": "🗑️ सेशन डिलीट करें",
-        "btn_owner": "👑 बॉट ओनर जानकारी",
-        "btn_comm": "👑 सिंटेक्स कम्युनिटी",
-        "btn_back": "🔙 डैशबोर्ड पर वापस",
-        "btn_lang": "🌐 भाषा बदलें (Language)",
-        "empty_inbox": "📭 इनबॉक्स खाली है! कोई नया OTP या ईमेल नहीं आया।",
-        "vault_saved": "✅ ईमेल सफलतापूर्वक आपके प्राइवेट वॉल्ट में सेव हो गया!",
-        "vault_empty": "📁 वॉल्ट खाली है! सेव बटन दबाकर ईमेल सुरक्षित रखें।",
-        "session_cleared": "सेशन डिलीट हो गया",
-        "ask_custom_name": "✏️ <b>अपना मनपसंद यूजरनेम टाइप करके भेजें:</b>\n<i>(जैसे: rahul, king, boss99)</i>",
-        "select_domain": "🌐 <b>उपलब्ध डोमेन में से एक चुनें:</b>"
-    }
-}
 
-# ---------------- UI DASHBOARDS & LAYOUTS ----------------
-def get_main_dashboard_markup(lang="en"):
-    t = STRINGS.get(lang, STRINGS["en"])
-    keyboard = [
-        [
-            InlineKeyboardButton(t["btn_refresh"], callback_data="refresh_inbox"),
-            InlineKeyboardButton(t["btn_save"], callback_data="save_to_vault"),
-        ],
-        [
-            InlineKeyboardButton(t["btn_instant"], callback_data="new_instant"),
-            InlineKeyboardButton(t["btn_custom"], callback_data="custom_name"),
-        ],
-        [
-            InlineKeyboardButton(t["btn_domain"], callback_data="custom_domain"),
-            InlineKeyboardButton(t["btn_vault"], callback_data="view_vault"),
-        ],
-        [
-            InlineKeyboardButton(t["btn_tools"], callback_data="tools_settings"),
-            InlineKeyboardButton(t["btn_delete"], callback_data="delete_session"),
-        ],
-        [
-            InlineKeyboardButton(t["btn_owner"], callback_data="owner_info"),
-            InlineKeyboardButton(t["btn_comm"], url="https://t.me/syntaxkagc"),
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+def fetch_message_content(login, domain, msg_id):
+  try:
+    res = requests.get(
+        f"https://www.1secmail.com/api/v1/?action=readMessage&login={login}&domain={domain}&id={msg_id}",
+        timeout=10,
+    )
+    return res.json() if res.status_code == 200 else None
+  except Exception:
+    return None
 
-def render_dashboard_text(email="Not Generated", lang="en"):
-    t = STRINGS.get(lang, STRINGS["en"])
-    return (
-        f"┌───────────────────────────────┐\n"
-        f"│  ⚡ <b>{t['title']}</b>  │\n"
-        f"└───────────────────────────────┘\n\n"
-        f"📧 <b>{t['curr_email']}:</b>\n<code>{email}</code>\n\n"
-        f"🟢 <b>Status:</b> {t['status']}\n"
-        f"⏱️ <b>Allocated:</b> {t['allocated']}\n"
-        f"🛡️ <b>Engine:</b> {t['engine']}\n"
-        f"⚙️ <b>Architecture:</b> Cloud 24/7 Distributed"
+
+# ================= BOT COMMANDS =================
+@bot.message_handler(commands=["start"])
+def start_command(message):
+  user_id = message.from_user.id
+  user_state.pop(user_id, None)
+
+  if user_id not in user_lang:
+    bot.send_message(
+        message.chat.id,
+        "🌐 Choose Language / भाषा चुनें / Seleccione el idioma:",
+        reply_markup=get_lang_markup(),
+    )
+    return
+
+  if not is_user_joined_all(user_id):
+    bot.send_message(
+        message.chat.id,
+        get_text(user_id, "force_join"),
+        parse_mode="Markdown",
+        reply_markup=get_force_join_markup(user_id),
+    )
+    return
+
+  bot.send_message(
+      message.chat.id,
+      get_text(user_id, "welcome"),
+      reply_markup=get_main_menu_markup(user_id),
+  )
+
+
+# Text Handler for Custom Name input
+@bot.message_handler(func=lambda msg: True)
+def handle_text(message):
+  user_id = message.from_user.id
+  if user_state.get(user_id) == "waiting_custom_name":
+    name = message.text.strip().lower()
+    # Check if alphanumeric
+    if name.isalnum() and len(name) >= 3:
+      domain = random.choice(get_domains())
+      custom_mail = f"{name}@{domain}"
+      user_emails[user_id] = custom_mail
+      user_state.pop(user_id, None)
+      bot.send_message(
+          message.chat.id,
+          get_text(user_id, "mail_generated").format(email=custom_mail),
+          parse_mode="Markdown",
+          reply_markup=get_main_menu_markup(user_id),
+      )
+    else:
+      bot.send_message(message.chat.id, get_text(user_id, "invalid_custom_name"))
+
+
+# ================= CALLBACK QUERIES =================
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+  user_id = call.from_user.id
+  chat_id = call.message.chat.id
+
+  # Language Selection
+  if call.data.startswith("setlang_"):
+    user_lang[user_id] = call.data.split("_")[1]
+    bot.delete_message(chat_id, call.message.message_id)
+
+    if not is_user_joined_all(user_id):
+      bot.send_message(
+          chat_id,
+          get_text(user_id, "force_join"),
+          parse_mode="Markdown",
+          reply_markup=get_force_join_markup(user_id),
+      )
+    else:
+      bot.send_message(
+          chat_id,
+          get_text(user_id, "welcome"),
+          reply_markup=get_main_menu_markup(user_id),
+      )
+    return
+
+  if call.data == "change_lang":
+    bot.send_message(
+        chat_id, "🌐 Select language:", reply_markup=get_lang_markup()
+    )
+    return
+
+  # Force Join Verify
+  if call.data == "check_join":
+    if is_user_joined_all(user_id):
+      bot.delete_message(chat_id, call.message.message_id)
+      bot.send_message(
+          chat_id,
+          get_text(user_id, "verified_success"),
+          reply_markup=get_main_menu_markup(user_id),
+      )
+    else:
+      bot.answer_callback_query(
+          call.id, get_text(user_id, "not_joined"), show_alert=True
+      )
+    return
+
+  if not is_user_joined_all(user_id):
+    bot.answer_callback_query(
+        call.id, get_text(user_id, "not_joined"), show_alert=True
+    )
+    return
+
+  # 1. Random Email
+  if call.data == "gen_random":
+    bot.answer_callback_query(call.id)
+    domains = get_domains()
+    user = "".join(random.choices(string.ascii_lowercase + string.digits, k=10))
+    email = f"{user}@{random.choice(domains)}"
+    user_emails[user_id] = email
+    bot.send_message(
+        chat_id,
+        get_text(user_id, "mail_generated").format(email=email),
+        parse_mode="Markdown",
+        reply_markup=get_main_menu_markup(user_id),
     )
 
-def get_tools_markup(lang="en"):
-    t = STRINGS.get(lang, STRINGS["en"])
-    keyboard = [
-        [InlineKeyboardButton(t["btn_lang"], callback_data="open_lang_menu")],
-        [InlineKeyboardButton("🗑️ Clear Local Vault", callback_data="clear_vault_confirm")],
-        [InlineKeyboardButton(t["btn_back"], callback_data="back_dashboard")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_language_markup():
-    keyboard = [
-        [
-            InlineKeyboardButton("🇬🇧 English", callback_data="set_lang_en"),
-            InlineKeyboardButton("🇮🇳 हिन्दी (Hindi)", callback_data="set_lang_hi"),
-        ],
-        [InlineKeyboardButton("🔙 Back", callback_data="tools_settings")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-# ---------------- HANDLERS ----------------
-async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    lang = get_user_lang(user_id)
-    session = get_session(user_id)
-
-    if not session:
-        email, token, password = await create_mail_account()
-        if email:
-            save_session(user_id, email, token, password)
-            current_email = email
-        else:
-            current_email = "Server Error - Click Refresh"
-    else:
-        current_email = session[0]
-
-    text = render_dashboard_text(current_email, lang)
-    reply_markup = get_main_dashboard_markup(lang)
-
-    if update.callback_query:
-        await update.callback_query.answer()
-        await update.callback_query.edit_message_text(
-            text=text,
-            reply_markup=reply_markup,
-            parse_mode=ParseMode.HTML
-        )
-    else:
-        await update.message.reply_text(
-            text=text,
-            reply_markup=reply_markup,
-            parse_mode=ParseMode.HTML
-        )
-
-async def prompt_custom_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = update.effective_user.id
-    lang = get_user_lang(user_id)
-    t = STRINGS.get(lang, STRINGS["en"])
-
-    cancel_btn = InlineKeyboardMarkup([[InlineKeyboardButton(t["btn_back"], callback_data="cancel_custom")]])
-    await query.edit_message_text(text=t["ask_custom_name"], reply_markup=cancel_btn, parse_mode=ParseMode.HTML)
-    return WAITING_CUSTOM_NAME
-
-async def receive_custom_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    lang = get_user_lang(user_id)
-    raw_name = update.message.text.strip().replace(" ", "")
-
-    email, token, password = await create_mail_account(custom_user=raw_name)
-    if email:
-        save_session(user_id, email, token, password)
-        await update.message.reply_text(
-            text=render_dashboard_text(email, lang),
-            reply_markup=get_main_dashboard_markup(lang),
-            parse_mode=ParseMode.HTML
-        )
-    else:
-        await update.message.reply_text(
-            text="⚠️ Name unavailable or format invalid! Please try another name or send /start."
-        )
-    return ConversationHandler.END
-
-async def cancel_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = update.effective_user.id
-    lang = get_user_lang(user_id)
-    session = get_session(user_id)
-    email = session[0] if session else "Session Inactive"
-
-    await query.edit_message_text(
-        text=render_dashboard_text(email, lang),
-        reply_markup=get_main_dashboard_markup(lang),
-        parse_mode=ParseMode.HTML
-    )
-    return ConversationHandler.END
-
-async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    user_id = update.effective_user.id
-    lang = get_user_lang(user_id)
-    t = STRINGS.get(lang, STRINGS["en"])
-
-    if data == "refresh_inbox":
-        session = get_session(user_id)
-        if not session:
-            await query.answer("No active email!", show_alert=True)
-            return
-
-        token = session[1]
-        emails = await fetch_inbox_messages(token)
-        if not emails:
-            await query.answer(t["empty_inbox"], show_alert=True)
-            return
-
-        inbox_text = "📬 <b>Recent Intercepted Messages:</b>\n\n"
-        for idx, mail in enumerate(emails[:5], 1):
-            sender = mail.get("from", {}).get("address", "Unknown")
-            subject = mail.get("subject", "No Subject")
-            intro = mail.get("intro", "")
-            inbox_text += f"<b>{idx}. From:</b> <code>{sender}</code>\n"
-            inbox_text += f"<b>Subject:</b> {subject}\n"
-            inbox_text += f"<b>Snippet:</b> <i>{intro[:90]}...</i>\n\n"
-
-        back_markup = InlineKeyboardMarkup([[InlineKeyboardButton(t["btn_back"], callback_data="back_dashboard")]])
-        await query.edit_message_text(text=inbox_text, reply_markup=back_markup, parse_mode=ParseMode.HTML)
-
-    elif data == "new_instant":
-        await query.answer("Generating fresh address...", show_alert=False)
-        email, token, password = await create_mail_account()
-        if email:
-            save_session(user_id, email, token, password)
-            await query.edit_message_text(
-                text=render_dashboard_text(email, lang),
-                reply_markup=get_main_dashboard_markup(lang),
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await query.answer("API Busy! Please retry.", show_alert=True)
-
-    elif data == "custom_domain":
-        domains = await fetch_available_domains()
-        kb = [[InlineKeyboardButton(f"🌐 @{d}", callback_data=f"set_domain_{d}")] for d in domains]
-        kb.append([InlineKeyboardButton(t["btn_back"], callback_data="back_dashboard")])
-        await query.edit_message_text(text=t["select_domain"], reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.HTML)
-
-    elif data.startswith("set_domain_"):
-        chosen_domain = data.replace("set_domain_", "")
-        email, token, password = await create_mail_account(domain=chosen_domain)
-        if email:
-            save_session(user_id, email, token, password)
-            await query.edit_message_text(
-                text=render_dashboard_text(email, lang),
-                reply_markup=get_main_dashboard_markup(lang),
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await query.answer("Error allocating domain!", show_alert=True)
-
-    elif data == "save_to_vault":
-        session = get_session(user_id)
-        if session:
-            add_to_vault(user_id, session[0], session[2], session[1])
-            await query.answer(t["vault_saved"], show_alert=True)
-        else:
-            await query.answer("No email active!", show_alert=True)
-
-    elif data == "view_vault":
-        vault_items = get_user_vault(user_id)
-        if not vault_items:
-            await query.answer(t["vault_empty"], show_alert=True)
-            return
-
-        vault_text = "📁 <b>Saved Vault Credentials:</b>\n\n"
-        for v in vault_items:
-            vault_text += f"📧 <code>{v[1]}</code>\n🔑 Pass: <code>{v[2]}</code>\n\n"
-
-        back_markup = InlineKeyboardMarkup([[InlineKeyboardButton(t["btn_back"], callback_data="back_dashboard")]])
-        await query.edit_message_text(text=vault_text, reply_markup=back_markup, parse_mode=ParseMode.HTML)
-
-    elif data == "tools_settings":
-        tools_text = (
-            "🛠️ <b>TOOLS & ADVANCED SETTINGS</b>\n"
-            "─────────────────────────────\n"
-            "• Customize preferences & interface language\n"
-            "• Manage saved credentials & engine rules"
-        )
-        await query.edit_message_text(text=tools_text, reply_markup=get_tools_markup(lang), parse_mode=ParseMode.HTML)
-
-    elif data == "open_lang_menu":
-        menu_text = "🌐 <b>Choose Preferred Language / भाषा चुनें:</b>"
-        await query.edit_message_text(text=menu_text, reply_markup=get_language_markup(), parse_mode=ParseMode.HTML)
-
-    elif data.startswith("set_lang_"):
-        new_lang = data.split("_")[-1]
-        set_user_lang(user_id, new_lang)
-        alert_msg = "Language updated to English!" if new_lang == "en" else "भाषा सफलतापूर्वक हिन्दी में सेट हो गई!"
-        await query.answer(alert_msg, show_alert=True)
-
-        session = get_session(user_id)
-        email = session[0] if session else "Session Inactive"
-        await query.edit_message_text(
-            text=render_dashboard_text(email, new_lang),
-            reply_markup=get_main_dashboard_markup(new_lang),
-            parse_mode=ParseMode.HTML
-        )
-
-    elif data == "clear_vault_confirm":
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("DELETE FROM vault WHERE user_id = ?", (user_id,))
-        conn.commit()
-        conn.close()
-        await query.answer("Vault cleared successfully!", show_alert=True)
-        await query.edit_message_text(
-            text=render_dashboard_text(get_session(user_id)[0] if get_session(user_id) else "Session Inactive", lang),
-            reply_markup=get_main_dashboard_markup(lang),
-            parse_mode=ParseMode.HTML
-        )
-
-    elif data == "owner_info":
-        info_text = (
-            "👑 <b>SYNTAX EMPIRE ARCHITECTURE</b>\n"
-            "─────────────────────────────\n"
-            "• <b>Founder & Lead:</b> Rahul\n"
-            "• <b>Support Community:</b> @syntaxkagc\n"
-            "• <b>Core Engine:</b> 24/7 Cloud Architecture\n"
-            "• <b>Framework:</b> Python 3.12 (Long-Polling + Keep-Alive)"
-        )
-        back_markup = InlineKeyboardMarkup([[InlineKeyboardButton(t["btn_back"], callback_data="back_dashboard")]])
-        await query.edit_message_text(text=info_text, reply_markup=back_markup, parse_mode=ParseMode.HTML)
-
-    elif data == "delete_session":
-        delete_session(user_id)
-        await query.answer(t["session_cleared"], show_alert=True)
-        await query.edit_message_text(
-            text=render_dashboard_text(t["session_cleared"], lang),
-            reply_markup=get_main_dashboard_markup(lang),
-            parse_mode=ParseMode.HTML
-        )
-
-    elif data == "back_dashboard":
-        session = get_session(user_id)
-        email = session[0] if session else "Session Inactive"
-        await query.edit_message_text(
-            text=render_dashboard_text(email, lang),
-            reply_markup=get_main_dashboard_markup(lang),
-            parse_mode=ParseMode.HTML
-        )
-
-# ---------------- APPLICATION INITIALIZATION ----------------
-def main():
-    init_db()
-
-    server_thread = threading.Thread(target=start_background_port, daemon=True)
-    server_thread.start()
-
-    logger.info("Initializing Syntax Empire Telegram Core Engine...")
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    # Custom Name Conversation Handler
-    custom_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_custom_name, pattern="^custom_name$")],
-        states={
-            WAITING_CUSTOM_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_custom_name)]
-        },
-        fallbacks=[CallbackQueryHandler(cancel_custom, pattern="^cancel_custom$")]
+  # 2. Custom Name Email
+  elif call.data == "gen_custom":
+    user_state[user_id] = "waiting_custom_name"
+    bot.answer_callback_query(call.id)
+    bot.send_message(
+        chat_id, get_text(user_id, "ask_custom_name"), parse_mode="Markdown"
     )
 
-    application.add_handler(custom_conv)
-    application.add_handler(CommandHandler("start", start_handler))
-    application.add_handler(CallbackQueryHandler(button_callback_handler))
+  # 3. Choose Custom Domain
+  elif call.data == "choose_domain":
+    bot.answer_callback_query(call.id)
+    domains = get_domains()
+    bot.send_message(
+        chat_id,
+        get_text(user_id, "choose_domain_txt"),
+        reply_markup=get_domain_markup(domains),
+    )
 
-    logger.info("Bot is active and running polling on Render Cloud...")
-    application.run_polling()
+  # Domain Selected Callback
+  elif call.data.startswith("seldom_"):
+    domain = call.data.replace("seldom_", "")
+    user = "".join(random.choices(string.ascii_lowercase + string.digits, k=10))
+    email = f"{user}@{domain}"
+    user_emails[user_id] = email
+    bot.answer_callback_query(call.id, f"Domain @{domain} set!")
+    bot.send_message(
+        chat_id,
+        get_text(user_id, "mail_generated").format(email=email),
+        parse_mode="Markdown",
+        reply_markup=get_main_menu_markup(user_id),
+    )
 
+  # 4. Check Inbox
+  elif call.data == "check_inbox":
+    email = user_emails.get(user_id)
+    if not email:
+      bot.answer_callback_query(
+          call.id, get_text(user_id, "no_email"), show_alert=True
+      )
+      return
+
+    bot.answer_callback_query(call.id, "Checking Inbox...")
+    login, domain = email.split("@")
+    messages = fetch_inbox(login, domain)
+
+    if not messages:
+      bot.send_message(
+          chat_id,
+          get_text(user_id, "inbox_empty").format(email=email),
+          reply_markup=get_main_menu_markup(user_id),
+      )
+      return
+
+    for msg in messages[:5]:
+      content = fetch_message_content(login, domain, msg.get("id"))
+      if content:
+        sender = content.get("from", "Unknown")
+        subject = content.get("subject", "No Subject")
+        date = content.get("date", "")
+        body = (
+            content.get("textBody")
+            or content.get("body")
+            or "No content preview"
+        )
+
+        full_msg = (
+            f"📩 **New Message!**\n\n👤 **From:** `{sender}`\n📌"
+            f" **Subject:** {subject}\n🕒 **Date:** {date}\n\n📝"
+            f" **Content/OTP:**\n{body[:3500]}"
+        )
+        bot.send_message(chat_id, full_msg, parse_mode="Markdown")
+
+    bot.send_message(
+        chat_id, "Inbox updated.", reply_markup=get_main_menu_markup(user_id)
+    )
+
+  # 5. Delete Email
+  elif call.data == "delete_mail":
+    if user_id in user_emails:
+      del user_emails[user_id]
+      bot.answer_callback_query(call.id, get_text(user_id, "mail_deleted"))
+      bot.send_message(
+          chat_id,
+          get_text(user_id, "mail_deleted"),
+          reply_markup=get_main_menu_markup(user_id),
+      )
+    else:
+      bot.answer_callback_query(
+          call.id, get_text(user_id, "no_email"), show_alert=True
+      )
+
+
+# ================= START POLLING =================
 if __name__ == "__main__":
-    main()
+  print(f"{BOT_USERNAME} running with Custom Name & Domain support...")
+  bot.infinity_polling(skip_pending=True)
