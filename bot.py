@@ -22,7 +22,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "7968537618:AAErF9P3rG9eQ7wU4c11l20f01H0A2A_p8E")
+# Updated Valid Bot Token
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8604538821:AAEXkRMTPA5jnuyI0YzNaiyeCelBuWhWJe4")
 BASE_API_URL = "https://api.mail.tm"
 
 # ---------------- RENDER 24/7 DUMMY PORT LISTENER ----------------
@@ -34,7 +35,7 @@ class RenderHealthServer(BaseHTTPRequestHandler):
         self.wfile.write(b"OK - Syntax Empire Temp Mail Core Running 24/7")
 
     def log_message(self, format, *args):
-        return  # Logs clean rakhne ke liye
+        return
 
 def start_background_port():
     port = int(os.environ.get("PORT", 8080))
