@@ -8,7 +8,7 @@ import telebot
 from telebot import types
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "8604538821:AAEXkRMTPA5jnuyI0YzNaiyeCelBuWhWJe4"
+BOT_TOKEN = "8604538821:AAExD6oBo_ueJT98Ti_hCqVmx_dyGVQUDbY"
 BOT_USERNAME = "@TDLE_robot"
 
 CHANNEL_USERNAME = "@syntaxredirect"
