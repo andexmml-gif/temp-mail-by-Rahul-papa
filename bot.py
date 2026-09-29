@@ -9,7 +9,7 @@ from telebot import types
 
 # ================= CONFIGURATION =================
 # Yahan BotFather se mila naya token paste karo:
-RAW_TOKEN = "8604538821:AAEXkRMTPA5jnuyI0YzNaiyeCelBuWhWJe4"
+RAW_TOKEN = "8604538821:AAE2xvDJ4_rjfc1dbohQS09_sbprbUontCY"
 BOT_TOKEN = os.environ.get("BOT_TOKEN", RAW_TOKEN).strip()
 
 BOT_USERNAME = "@Temp_mail_by_syntaxbot"
