@@ -1,4 +1,23 @@
 import os
+from threading import Thread
+from flask import Flask
+
+web_app = Flask(__name__)
+
+
+@web_app.route("/")
+def home():
+  return "Bot is alive and running!"
+
+
+def run_web():
+  port = int(os.environ.get("PORT", 8080))
+  web_app.run(host="0.0.0.0", port=port)
+
+
+# Background thread me web server start karna
+Thread(target=run_web, daemon=True).start()
+import os
 import sqlite3
 import random
 import string
