@@ -8,8 +8,8 @@ import telebot
 from telebot import types
 
 # ================= CONFIGURATION =================
-BOT_TOKEN = "8604538821:AAExD6oBo_ueJT98Ti_hCqVmx_dyGVQUDbY"
-BOT_USERNAME = "@TDLE_robot"
+BOT_TOKEN = "8604538821:AAEXkRMTPA5jnuyI0YzNaiyeCelBuWhWJe4"
+BOT_USERNAME = "@Temp_mail_by_syntaxbot"
 
 CHANNEL_USERNAME = "@syntaxredirect"
 CHANNEL_LINK = "https://t.me/syntaxredirect"
@@ -19,10 +19,12 @@ GROUP_LINK = "https://t.me/syntaxkagc"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# User session storage
-user_emails = {}
-user_vaults = {}  # user_id -> list of saved emails
+# In-memory storage: user_id -> {'address': str, 'token': str, 'id': str}
+user_sessions = {}
+user_vaults = {}
 user_state = {}
+
+MAIL_API_BASE = "https://api.mail.tm"
 
 # ================= KEEP-ALIVE SERVER (RENDER) =================
 server = Flask("")
@@ -30,7 +32,7 @@ server = Flask("")
 
 @server.route("/")
 def home():
-  return "SYNTAX EMPIRE BOT IS 100% ONLINE!"
+  return "SYNTAX EMPIRE BOT IS LIVE & LISTENING!"
 
 
 def run_web():
@@ -71,9 +73,88 @@ def get_force_join_markup():
   return markup
 
 
-# ================= DASHBOARD UI BUILDER =================
+# ================= MAIL.TM API INTEGRATION =================
+def get_mailtm_domains():
+  try:
+    res = requests.get(f"{MAIL_API_BASE}/domains", timeout=10)
+    if res.status_code == 200:
+      data = res.json()
+      domains = [d["domain"] for d in data.get("hydra:member", [])]
+      if domains:
+        return domains
+  except Exception as e:
+    print(f"Domain fetch error: {e}")
+  return ["bugfoo.com", "chitthi.in", "cevipsa.com"]
+
+
+def create_mailtm_account(username=None, domain=None):
+  try:
+    if not domain:
+      domains = get_mailtm_domains()
+      domain = domains[0]
+    if not username:
+      username = "".join(
+          random.choices(string.ascii_lowercase + string.digits, k=9)
+      )
+
+    address = f"{username}@{domain}"
+    password = "".join(
+        random.choices(
+            string.ascii_letters + string.digits + "!@#$%", k=14
+        )
+    )
+
+    # 1. Create Account
+    res = requests.post(
+        f"{MAIL_API_BASE}/accounts",
+        json={"address": address, "password": password},
+        timeout=10,
+    )
+    if res.status_code in [200, 201]:
+      # 2. Get JWT Token
+      token_res = requests.post(
+          f"{MAIL_API_BASE}/token",
+          json={"address": address, "password": password},
+          timeout=10,
+      )
+      if token_res.status_code == 200:
+        token = token_res.json().get("token")
+        return {"address": address, "token": token}
+  except Exception as e:
+    print(f"Account creation error: {e}")
+  return None
+
+
+def fetch_mailtm_messages(token):
+  try:
+    headers = {"Authorization": f"Bearer {token}"}
+    res = requests.get(
+        f"{MAIL_API_BASE}/messages", headers=headers, timeout=10
+    )
+    if res.status_code == 200:
+      return res.json().get("hydra:member", [])
+  except Exception as e:
+    print(f"Messages fetch error: {e}")
+  return []
+
+
+def fetch_mailtm_message_content(token, msg_id):
+  try:
+    headers = {"Authorization": f"Bearer {token}"}
+    res = requests.get(
+        f"{MAIL_API_BASE}/messages/{msg_id}", headers=headers, timeout=10
+    )
+    if res.status_code == 200:
+      return res.json()
+  except Exception as e:
+    print(f"Message content error: {e}")
+  return None
+
+
+# ================= DASHBOARD UI =================
 def get_dashboard_text(user_id):
-  current_email = user_emails.get(user_id, "No active session")
+  session = user_sessions.get(user_id)
+  current_email = session["address"] if session else "No active session"
   return (
       "╭────────────────────────────╮\n"
       "│ ⚡ **SYNTAX EMPIRE DASHBOARD** │\n"
@@ -127,47 +208,6 @@ def get_dashboard_markup():
   return markup
 
 
-# ================= 1SECMAIL API =================
-def get_domains():
-  try:
-    res = requests.get(
-        "https://www.1secmail.com/api/v1/?action=getDomainList", timeout=10
-    )
-    if res.status_code == 200:
-      return res.json()
-  except Exception:
-    pass
-  return ["1secmail.com", "1secmail.org", "1secmail.net"]
-
-
-def generate_random_email():
-  domains = get_domains()
-  user = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
-  return f"{user}@{random.choice(domains)}"
-
-
-def fetch_inbox(login, domain):
-  try:
-    res = requests.get(
-        f"https://www.1secmail.com/api/v1/?action=getMessages&login={login}&domain={domain}",
-        timeout=10,
-    )
-    return res.json() if res.status_code == 200 else []
-  except Exception:
-    return []
-
-
-def fetch_message_content(login, domain, msg_id):
-  try:
-    res = requests.get(
-        f"https://www.1secmail.com/api/v1/?action=readMessage&login={login}&domain={domain}&id={msg_id}",
-        timeout=10,
-    )
-    return res.json() if res.status_code == 200 else None
-  except Exception:
-    return None
-
-
 # ================= COMMANDS =================
 @bot.message_handler(commands=["start"])
 def start_command(message):
@@ -180,7 +220,7 @@ def start_command(message):
         text=(
             "⚠️ **ACCESS DENIED!**\n\n"
             "Bot को access करने के लिए Official Channel और Group दोनों join"
-            " करना अनिवार्य है।\n\n"
+            " करें।\n\n"
             "Join करने के बाद **'Check / Verified'** पर click करें।"
         ),
         parse_mode="Markdown",
@@ -188,8 +228,10 @@ def start_command(message):
     )
     return
 
-  if user_id not in user_emails:
-    user_emails[user_id] = generate_random_email()
+  if user_id not in user_sessions:
+    acc = create_mailtm_account()
+    if acc:
+      user_sessions[user_id] = acc
 
   bot.send_message(
       message.chat.id,
@@ -199,49 +241,55 @@ def start_command(message):
   )
 
 
-# Custom Name Input Handler
+# Custom Name Input
 @bot.message_handler(func=lambda msg: True)
 def handle_text(message):
   user_id = message.from_user.id
   if user_state.get(user_id) == "waiting_custom":
     name = message.text.strip().lower()
     if name.isalnum() and len(name) >= 3:
-      domains = get_domains()
-      custom_mail = f"{name}@{random.choice(domains)}"
-      user_emails[user_id] = custom_mail
-      user_state.pop(user_id, None)
-      bot.send_message(
-          message.chat.id,
-          f"✅ **Custom Email Allocated:**\n`{custom_mail}`\n\nReturning to"
-          " Dashboard...",
-          parse_mode="Markdown",
-      )
-      bot.send_message(
-          message.chat.id,
-          get_dashboard_text(user_id),
-          parse_mode="Markdown",
-          reply_markup=get_dashboard_markup(),
-      )
+      domains = get_mailtm_domains()
+      acc = create_mailtm_account(username=name, domain=domains[0])
+      if acc:
+        user_sessions[user_id] = acc
+        user_state.pop(user_id, None)
+        bot.send_message(
+            message.chat.id,
+            f"✅ **Custom Email Allocated:**\n`{acc['address']}`",
+            parse_mode="Markdown",
+        )
+        bot.send_message(
+            message.chat.id,
+            get_dashboard_text(user_id),
+            parse_mode="Markdown",
+            reply_markup=get_dashboard_markup(),
+        )
+      else:
+        bot.send_message(
+            message.chat.id,
+            "❌ यह नाम पहले से इस्तेमाल में है। कोई दूसरा नाम ट्राई करें!",
+        )
     else:
       bot.send_message(
           message.chat.id,
-          "❌ Invalid name! केवल letters और numbers का इस्तेमाल करें (बिना"
-          " space).",
+          "❌ Invalid name! केवल लेटर्स और नंबर्स (बिना स्पेस) का उपयोग करें।",
       )
 
 
-# ================= CALLBACK HANDLER =================
+# ================= CALLBACKS =================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
   user_id = call.from_user.id
   chat_id = call.message.chat.id
 
-  # Force Join Verify
+  # Verify Join
   if call.data == "check_join":
     if is_user_joined_all(user_id):
       bot.delete_message(chat_id, call.message.message_id)
-      if user_id not in user_emails:
-        user_emails[user_id] = generate_random_email()
+      if user_id not in user_sessions:
+        acc = create_mailtm_account()
+        if acc:
+          user_sessions[user_id] = acc
       bot.send_message(
           chat_id,
           get_dashboard_text(user_id),
@@ -264,74 +312,76 @@ def handle_callbacks(call):
 
   # 1. Refresh Inbox
   if call.data == "refresh_inbox":
-    email = user_emails.get(user_id)
-    if not email:
-      bot.answer_callback_query(call.id, "No active email!", show_alert=True)
+    session = user_sessions.get(user_id)
+    if not session or not session.get("token"):
+      bot.answer_callback_query(call.id, "No active session!", show_alert=True)
       return
 
-    bot.answer_callback_query(call.id, "🔄 Fetching messages...")
-    login, domain = email.split("@")
-    messages = fetch_inbox(login, domain)
+    bot.answer_callback_query(call.id, "🔄 Checking Inbox...")
+    messages = fetch_mailtm_messages(session["token"])
 
     if not messages:
       bot.answer_callback_query(
-          call.id, "📭 Inbox is empty! No new mails.", show_alert=True
+          call.id, "📭 Inbox empty! No messages yet.", show_alert=True
       )
       return
 
     for msg in messages[:5]:
-      content = fetch_message_content(login, domain, msg.get("id"))
-      if content:
-        sender = content.get("from", "Unknown")
-        subject = content.get("subject", "No Subject")
-        date = content.get("date", "")
-        body = (
-            content.get("textBody")
-            or content.get("body")
-            or "No content preview"
-        )
+      msg_id = msg.get("id")
+      full_data = fetch_mailtm_message_content(session["token"], msg_id)
+      if full_data:
+        sender = full_data.get("from", {}).get("address", "Unknown")
+        subject = full_data.get("subject", "No Subject")
+        intro = full_data.get("intro", "")
+        text_body = full_data.get("text") or intro or "No content preview"
+        date = full_data.get("createdAt", "")[:19].replace("T", " ")
 
-        full_msg = (
+        alert_msg = (
             f"📩 **New Incoming Message!**\n\n"
             f"👤 **From:** `{sender}`\n"
             f"📌 **Subject:** {subject}\n"
             f"🕒 **Time:** {date}\n\n"
-            f"📝 **Body / OTP:**\n{body[:3500]}"
+            f"📝 **Body / OTP:**\n{text_body[:3500]}"
         )
-        bot.send_message(chat_id, full_msg, parse_mode="Markdown")
+        bot.send_message(chat_id, alert_msg, parse_mode="Markdown")
 
   # 2. Save to Vault
   elif call.data == "save_vault":
-    email = user_emails.get(user_id)
-    if not email:
+    session = user_sessions.get(user_id)
+    if not session:
       bot.answer_callback_query(call.id, "No email to save!", show_alert=True)
       return
+    email = session["address"]
     if user_id not in user_vaults:
       user_vaults[user_id] = []
     if email not in user_vaults[user_id]:
       user_vaults[user_id].append(email)
       bot.answer_callback_query(
-          call.id, "💾 Email saved in Vault!", show_alert=True
+          call.id, "💾 Email saved to Vault!", show_alert=True
       )
     else:
-      bot.answer_callback_query(
-          call.id, "Already present in Vault!", show_alert=True
-      )
+      bot.answer_callback_query(call.id, "Already in Vault!", show_alert=True)
 
   # 3. Instant Fresh Email
   elif call.data == "instant_email":
-    user_emails[user_id] = generate_random_email()
-    bot.answer_callback_query(call.id, "⚡ New Email Allocated!")
-    try:
-      bot.edit_message_text(
-          get_dashboard_text(user_id),
-          chat_id=chat_id,
-          message_id=call.message.message_id,
-          parse_mode="Markdown",
-          reply_markup=get_dashboard_markup(),
+    acc = create_mailtm_account()
+    if acc:
+      user_sessions[user_id] = acc
+      bot.answer_callback_query(call.id, "⚡ New Email Allocated!")
+      try:
+        bot.edit_message_text(
+            get_dashboard_text(user_id),
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown",
+            reply_markup=get_dashboard_markup(),
+        )
+      except Exception:
+        pass
+    else:
+      bot.answer_callback_query(
+          call.id, "Error generating email. Try again!", show_alert=True
       )
-    except Exception:
-      pass
 
   # 4. Custom Name Email
   elif call.data == "custom_name":
@@ -346,38 +396,39 @@ def handle_callbacks(call):
   # 5. Custom Domain
   elif call.data == "custom_domain":
     bot.answer_callback_query(call.id)
-    domains = get_domains()
+    domains = get_mailtm_domains()
     dom_markup = types.InlineKeyboardMarkup(row_width=1)
     for dom in domains:
       dom_markup.add(
           types.InlineKeyboardButton(
-              f"🌐 @{dom}", callback_data=f"setdom_{dom[:25]}"
+              f"🌐 @{dom}", callback_data=f"setdom_{dom}"
           )
       )
     bot.send_message(
         chat_id,
-        "🌐 **उपलब्ध डोमेन में से एक चुनें:**",
+        "🌐 **उपलब्ध एक्टिव डोमेन चुनें:**",
         reply_markup=dom_markup,
     )
 
   elif call.data.startswith("setdom_"):
     domain = call.data.replace("setdom_", "")
-    user = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
-    user_emails[user_id] = f"{user}@{domain}"
-    bot.answer_callback_query(call.id, f"Allocated @{domain}")
-    bot.send_message(
-        chat_id,
-        get_dashboard_text(user_id),
-        parse_mode="Markdown",
-        reply_markup=get_dashboard_markup(),
-    )
+    acc = create_mailtm_account(domain=domain)
+    if acc:
+      user_sessions[user_id] = acc
+      bot.answer_callback_query(call.id, f"Allocated @{domain}")
+      bot.send_message(
+          chat_id,
+          get_dashboard_text(user_id),
+          parse_mode="Markdown",
+          reply_markup=get_dashboard_markup(),
+      )
 
-  # 6. My Vault (Saved)
+  # 6. My Vault
   elif call.data == "my_vault":
     saved = user_vaults.get(user_id, [])
     if not saved:
       bot.answer_callback_query(
-          call.id, "📁 Vault is empty! No emails saved.", show_alert=True
+          call.id, "📁 Vault is empty!", show_alert=True
       )
     else:
       txt = "📁 **YOUR SAVED VAULT EMAILS:**\n\n"
@@ -389,13 +440,13 @@ def handle_callbacks(call):
   elif call.data == "tools_settings":
     bot.answer_callback_query(
         call.id,
-        "🛠 Engine: 1secmail High-Speed Interceptor v2.5\nStatus: Operational",
+        "🛠 Engine: Mail.tm REST Interceptor v3.0\nStatus: 100% Operational",
         show_alert=True,
     )
 
   # 8. Delete Session
   elif call.data == "delete_session":
-    user_emails.pop(user_id, None)
+    user_sessions.pop(user_id, None)
     bot.answer_callback_query(call.id, "🗑 Session deleted!")
     try:
       bot.edit_message_text(
@@ -419,5 +470,5 @@ def handle_callbacks(call):
 
 # ================= START POLLING =================
 if __name__ == "__main__":
-  print(f"{BOT_USERNAME} SYNTAX EMPIRE UI running...")
+  print(f"{BOT_USERNAME} Mail.tm engine running...")
   bot.infinity_polling(skip_pending=True)
